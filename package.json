@@ -1,0 +1,11 @@
+{
+  "name": "inkwell",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline blog writing studio with proofreading and Substack export.",
+  "scripts": {
+    "start": "npx http-server -p 8080 -c-1 .",
+    "test": "node --test tests/proofreader.test.js"
+  },
+  "license": "MIT"
+}

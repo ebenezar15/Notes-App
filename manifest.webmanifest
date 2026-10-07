@@ -1,0 +1,19 @@
+{
+  "name": "Inkwell — Offline Blog Studio",
+  "short_name": "Inkwell",
+  "description": "Write, organise and proofread blog posts offline, then publish to Substack.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "background_color": "#f6f4ef",
+  "theme_color": "#ff6719",
+  "orientation": "any",
+  "categories": ["productivity", "writing"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
