@@ -96,6 +96,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           V=$(node -p "require('./package.json').version")
+          rm -f out/artifact.tar # the GitHub Pages bundle, not a download
           ls -la out
           cat > notes.md <<NOTES
           ## Download Inkwell $V
