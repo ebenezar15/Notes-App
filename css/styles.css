@@ -870,3 +870,67 @@ kbd { font: 11px var(--font-ui); color: var(--text-3); border: 1px solid var(--l
   body { overflow: visible; background: #fff; }
   .app, .main, .workspace, .editor-area, .editor-scroll { display: block; height: auto; overflow: visible; }
 }
+
+/* ==========================================================================
+   Social studio
+   ========================================================================== */
+.modal.social { width: min(1180px, 100%); height: min(820px, calc(100dvh - 32px)); }
+.ss-tabs { align-self: flex-start; flex-wrap: wrap; }
+.ss-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ss-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: 132px minmax(0, 1fr) 300px; gap: 16px; padding: 0 20px; }
+.ss-rail { overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 2px; }
+.ss-rail .ss-thumb { flex: none; }
+.ss-thumb { position: relative; border-radius: 10px; overflow: hidden; border: 2px solid transparent; box-shadow: var(--shadow-sm); background: var(--bg-2); line-height: 0; }
+.ss-thumb canvas { width: 100%; height: auto; display: block; }
+.ss-thumb span { position: absolute; left: 6px; top: 6px; line-height: 1; font-size: 11px; font-weight: 700; background: rgba(0, 0, 0, .55); color: #fff; padding: 3px 6px; border-radius: 6px; }
+.ss-thumb.active { border-color: var(--accent); }
+.ss-stage { min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background: repeating-conic-gradient(var(--bg-2) 0 25%, transparent 0 50%) 0 0 / 22px 22px; border-radius: 16px; border: 1px solid var(--line); padding: 16px; }
+.ss-canvas-wrap { flex: 1; min-height: 0; width: 100%; position: relative; }
+.ss-canvas-wrap canvas { position: absolute; inset: 0; margin: auto; width: auto; height: auto; max-width: 100%; max-height: 100%; border-radius: 10px; box-shadow: var(--shadow-lg); }
+.ss-nav { display: flex; align-items: center; gap: 10px; font-size: 12.5px; font-weight: 600; color: var(--text-2); background: var(--surface); border-radius: 12px; padding: 2px 6px; box-shadow: var(--shadow-sm); }
+.ss-side { overflow-y: auto; padding-right: 4px; }
+.ss-side .field { margin-bottom: 12px; }
+.ss-wrap { flex-wrap: wrap; }
+.ss-themes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ss-themes button { height: 46px; border-radius: 10px; font: 700 16px var(--font-serif); box-shadow: var(--shadow-sm); border: 2px solid var(--line); }
+.ss-themes button.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ss-check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+.ss-check input { accent-color: var(--accent); width: 16px; height: 16px; }
+.ss-hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+.ss-kind { border: 0; background: var(--bg-2); border-radius: 6px; padding: 2px 4px; font-size: 12px; font-weight: 600; color: var(--text); }
+.ss-slide-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ss-foot { display: flex; align-items: center; gap: 8px; padding: 14px 20px 18px; flex-wrap: wrap; }
+.ss-text { flex: 1; display: flex; flex-direction: column; padding: 0 20px 18px; min-height: 0; }
+.ss-text textarea { flex: 1; min-height: 240px; font: 15px/1.6 var(--font-ui); resize: none; }
+.ss-text-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12.5px; }
+@media (max-width: 900px) {
+  .ss-grid { grid-template-columns: minmax(0, 1fr); overflow-y: auto; }
+  .ss-rail { flex-direction: row; overflow-x: auto; overflow-y: hidden; order: 2; }
+  .ss-rail .ss-thumb { width: 72px; }
+  .ss-stage { min-height: 360px; order: 1; }
+  .ss-side { order: 3; overflow: visible; }
+}
+
+/* Sync */
+.sync-pill { cursor: pointer; border-radius: 8px; padding: 4px 6px; margin-left: -6px; }
+.sync-pill:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.sync-pill.error svg, .sync-pill.offline svg { color: var(--s-editing); }
+.sync-pill.syncing svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.sync-steps { margin: 0 0 14px; padding-left: 20px; color: var(--text-2); font-size: 13px; line-height: 1.6; }
+.sync-steps code, .sync-sql { font-family: var(--font-mono); font-size: 12px; }
+.sync-sql { width: 100%; height: 120px; resize: vertical; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; color: var(--text); }
+.sync-account { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 14px; background: var(--bg-2); margin-bottom: 14px; }
+.sync-account .av { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 700; background: linear-gradient(135deg, #ff6719, #7c3aed); flex: none; }
+.sync-account div { flex: 1; min-width: 0; }
+.sync-account b { display: block; overflow: hidden; text-overflow: ellipsis; }
+.sync-account small { color: var(--text-3); }
+.form-error { color: var(--c-spelling); font-size: 12.5px; min-height: 18px; margin: -4px 0 8px; }
+
+/* Desktop app (Electron) on macOS: room for the traffic-light buttons and a draggable title area */
+.electron-mac .sidebar { padding-top: 40px; }
+.electron-mac .app.focus .editor-top { padding-left: 84px; }
+.electron .brand, .electron .editor-top, .electron .board-head, .electron .page-head { -webkit-app-region: drag; }
+.electron .brand button, .electron .editor-top button, .electron .editor-top select, .electron .editor-top .crumbs,
+.electron .board-head select, .electron .board-head button, .electron .page-head button { -webkit-app-region: no-drag; }

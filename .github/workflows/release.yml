@@ -1,0 +1,122 @@
+name: Build & release apps
+
+# Builds the Mac (Intel + Apple Silicon), Windows and Linux desktop apps, the single-file web app,
+# publishes them as a GitHub Release, and deploys the browser version to GitHub Pages.
+on:
+  push:
+    branches: [claude/offline-blog-app-substack-y3vkvu, main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS universal, os: macos-latest, script: 'dist:mac' }
+          - { name: Windows, os: windows-latest, script: 'dist:win' }
+          - { name: Linux, os: ubuntu-latest, script: 'dist:linux' }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run ${{ matrix.script }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            release/*.dmg
+            release/*-mac-*.zip
+            release/*.exe
+            release/*.AppImage
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/proofreader.test.js
+      - run: node scripts/build-web.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-single-file
+          path: dist/Inkwell.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+  pages:
+    name: Deploy browser version
+    needs: web
+    runs-on: ubuntu-latest
+    continue-on-error: true # Pages may need to be switched on once in repo settings
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  release:
+    name: Publish release
+    needs: [desktop, web]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Create or replace the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./package.json').version")
+          ls -la out
+          cat > notes.md <<NOTES
+          ## Download Inkwell $V
+
+          | Your computer | File |
+          | --- | --- |
+          | **Mac** (Intel *and* Apple Silicon M1–M4) | \`Inkwell-$V-mac-universal.dmg\` |
+          | **Windows 10/11** — installer | \`Inkwell-$V-Windows-Setup.exe\` |
+          | **Windows** — no install needed | \`Inkwell-$V-Windows-Portable.exe\` |
+          | **Linux** | \`Inkwell-$V-linux-x86_64.AppImage\` |
+          | **Any browser** — one file | \`Inkwell.html\` |
+
+          **Browser version:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+
+          ### First launch
+          These free builds aren't signed with a paid Apple/Microsoft certificate, so your computer asks once:
+          - **Mac:** open the .dmg, drag Inkwell to Applications, then **right-click Inkwell → Open → Open**.
+            If macOS says the app "is damaged", run this once in Terminal: \`xattr -cr /Applications/Inkwell.app\`
+          - **Windows:** if SmartScreen appears, click **More info → Run anyway**.
+
+          Built from ${{ github.sha }}.
+          NOTES
+          gh release delete "v$V" --yes --cleanup-tag || true
+          gh release create "v$V" out/* --target "${{ github.sha }}" --title "Inkwell $V" --notes-file notes.md --latest

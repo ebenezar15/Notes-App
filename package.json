@@ -1,11 +1,102 @@
 {
   "name": "inkwell",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "Offline blog writing studio with proofreading and Substack export.",
+  "description": "Offline blog writing studio with proofreading, sync, Substack export and social carousels.",
   "scripts": {
     "start": "npx http-server -p 8080 -c-1 .",
-    "test": "node --test tests/proofreader.test.js"
+    "desktop": "electron .",
+    "test": "node --test tests/proofreader.test.js",
+    "dist:mac": "electron-builder --mac --universal",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "build:web": "node scripts/build-web.js"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^38.8.6",
+    "electron-builder": "^26.15.3"
+  },
+  "productName": "Inkwell",
+  "author": "Inkwell",
+  "homepage": "https://github.com/ebenezar15/Notes-App",
+  "main": "electron/main.js",
+  "build": {
+    "appId": "app.inkwell.studio",
+    "productName": "Inkwell",
+    "artifactName": "Inkwell-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "index.html",
+      "manifest.webmanifest",
+      "css/**",
+      "js/**",
+      "icons/**",
+      "electron/**",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Inkwell ${version}",
+      "artifactName": "Inkwell-${version}-mac-universal.${ext}"
+    },
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "Inkwell-${version}-Windows-Setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "Inkwell-${version}-Windows-Portable.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Office",
+      "target": [
+        "AppImage"
+      ]
+    },
+    "publish": null
+  }
 }

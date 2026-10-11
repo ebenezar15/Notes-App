@@ -83,7 +83,7 @@
   function debounce(fn, ms) {
     let t;
     const d = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
-    d.flush = (...a) => { clearTimeout(t); fn(...a); };
+    d.flush = (...a) => { clearTimeout(t); return fn(...a); };
     d.cancel = () => clearTimeout(t);
     return d;
   }
@@ -169,7 +169,7 @@
     if (delta <= 0) return;
     const key = today();
     state.activity[key] = (state.activity[key] || 0) + delta;
-    await DB.put('activity', { date: key, words: state.activity[key] });
+    await DB.put('activity', { date: key, words: state.activity[key], updatedAt: Date.now() });
   }
 
   function newProject(data = {}) {
@@ -656,6 +656,7 @@
           <button class="icon-btn ${state.panel === 'proofread' ? 'active' : ''}" data-panel="proofread" title="Proofread (${MOD}⇧P)"><svg><use href="#i-sparkle"/></svg><span class="badge" id="issueBadge" hidden></span></button>
           <button class="icon-btn ${state.panel === 'insights' ? 'active' : ''}" data-panel="insights" title="Insights"><svg><use href="#i-chart"/></svg></button>
           <button class="icon-btn ${state.panel === 'publish' ? 'active' : ''}" data-panel="publish" title="Publish to Substack"><svg><use href="#i-send"/></svg></button>
+          <button class="icon-btn" data-action="social" title="Social studio — Instagram carousel, captions, threads"><svg><use href="#i-insta"/></svg></button>
           <button class="icon-btn hide-sm ${state.panel === 'history' ? 'active' : ''}" data-panel="history" title="Version history"><svg><use href="#i-history"/></svg></button>
           <button class="icon-btn" data-action="post-menu" title="More"><svg><use href="#i-more"/></svg></button>
         </div>
@@ -1633,6 +1634,10 @@
         </div>
         <small class="muted" style="display:block;margin-top:6px;font-size:11.5px">The .zip bundles Markdown, HTML and all images as files — handy if Substack doesn't pick up an image on paste.</small>
       </div>
+      <div class="panel-section"><h4>Share on social</h4>
+        <button class="btn block" data-action="social"><svg><use href="#i-insta"/></svg>Instagram carousel & captions</button>
+        <small class="muted" style="display:block;margin-top:6px;font-size:11.5px">Designed slides for Instagram (4:5, square, story), a LinkedIn PDF carousel, a caption and an X/Threads thread.</small>
+      </div>
       <div class="panel-section"><h4>After publishing</h4>
         <label class="field"><span>Substack URL</span><input class="input" id="pubUrl" placeholder="https://you.substack.com/p/…" value="${esc(post.publishedUrl || '')}"></label>
         ${post.status === 'published'
@@ -1860,6 +1865,8 @@
         <div class="settings-row"><div><b>Live proofreading</b><small>Underline issues while you type</small></div><label class="switch"><input type="checkbox" id="setLive" ${s.liveCheck ? 'checked' : ''}><i></i></label></div>
         <div class="settings-row"><div><b>Smart typography</b><small>Suggest curly quotes and em dashes</small></div><label class="switch"><input type="checkbox" id="setTypo" ${s.categories.typography ? 'checked' : ''}><i></i></label></div>
         <div class="settings-group">Your data</div>
+        <div class="settings-row"><div><b>Sync across devices</b><small>${Sync.enabled ? `Signed in as ${esc(Sync.user.email)}` : Sync.config ? 'Set up — sign in to start syncing' : 'Free, optional — use the same login on Mac, Windows and the web'}</small></div>
+          <button class="btn sm" data-sync-open><svg><use href="#i-cloud"/></svg>${Sync.enabled ? 'Manage' : 'Set up'}</button></div>
         <div class="settings-row"><div><b>Storage</b><small>${est ? `${(est.usage / 1048576).toFixed(1)} MB used${est.quota ? ` of ${(est.quota / 1073741824).toFixed(1)} GB available` : ''} · ${est.persisted ? 'Protected from automatic cleanup' : 'Not yet protected from browser cleanup'}` : 'Stored in this browser on this device'}</small>
           ${est && est.quota ? `<div class="meter"><i style="width:${Math.max(1, Math.min(100, (est.usage / est.quota) * 100))}%"></i></div>` : ''}</div>
           ${est && !est.persisted ? '<button class="btn sm" data-persist>Protect</button>' : ''}</div>
@@ -1882,6 +1889,7 @@
     $('#setTypo', el).addEventListener('change', (e) => { s.categories.typography = e.target.checked; saveSettings(); runCheck(); });
     const persistBtn = $('[data-persist]', el);
     if (persistBtn) persistBtn.addEventListener('click', async () => { const ok = await DB.persist(); toast(ok ? 'Storage is now protected' : 'Your browser declined — install the app to improve this'); m.close(); });
+    $('[data-sync-open]', el).addEventListener('click', () => { m.close(); syncDialog(); });
     $('[data-backup]', el).addEventListener('click', exportBackup);
     $('[data-restore]', el).addEventListener('click', () => { m.close(); importBackup(); });
     $('[data-export-all]', el).addEventListener('click', exportAllZip);
@@ -1925,6 +1933,7 @@
       '-',
       ...(others.length ? [{ label: 'Move to' }, ...others.map((p) => ({ text: `${p.emoji} ${p.name}`, run: () => movePost(post, p.id) }))] : []),
       '-',
+      { text: 'Social studio (carousel)…', icon: 'i-insta', run: openSocial },
       { text: 'Export Markdown', icon: 'i-download', run: () => exportPost('md') },
       { text: 'Export HTML', icon: 'i-download', run: () => exportPost('html') },
       { text: 'Print / Save as PDF', icon: 'i-docs', run: () => window.print() },
@@ -2191,6 +2200,8 @@
         break;
       }
       case 'settings': settingsDialog(); break;
+      case 'social': openSocial(); break;
+      case 'sync': syncDialog(); break;
       case 'focus': toggleFocus(); break;
       case 'cover': coverDialog(); break;
       case 'remove-cover': { const p = currentPost(); flushSave(); p.cover = null; await persistPost(p, { snapshot: 'none' }); renderEditor(); refreshCard(p); break; }
@@ -2304,6 +2315,8 @@
 
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushSave(); });
   window.addEventListener('pagehide', flushSave);
+  // The desktop app calls this before closing the window so the last keystrokes are saved.
+  window.__inkwellFlush = async () => { if (editor) await save.flush(); };
 
   // ======================================================================
   // Boot
@@ -2316,6 +2329,214 @@
     (await DB.all('activity')).forEach((a) => { state.activity[a.date] = a.words; });
   }
 
+  // ======================================================================
+  // Social studio
+  // ======================================================================
+  function openSocial() {
+    flushSave();
+    const post = currentPost();
+    if (!post) return;
+    const proj = getProject(post.projectId);
+    Social.openStudio({
+      post, project: proj ? { ...proj, _colors: PALETTE[proj.color] || PALETTE[0] } : null,
+      author: state.settings.author, modal, toast, Exporter,
+    });
+  }
+
+  // ======================================================================
+  // Sync (optional, account-based)
+  // ======================================================================
+  function updateSyncBadge() {
+    const pill = $('#syncPill');
+    if (!pill) return;
+    const s = Sync.status;
+    const labels = {
+      off: ['i-offline', 'Saved on this device'],
+      'signed-out': ['i-cloud', 'Sync paused — sign in'],
+      idle: ['i-cloud', `Synced${Sync.lastSyncAt ? ' · ' + relTime(Sync.lastSyncAt) : ''}`],
+      syncing: ['i-sync', 'Syncing…'],
+      offline: ['i-cloud', 'Offline · will sync later'],
+      error: ['i-cloud', 'Sync problem — click'],
+    };
+    const [icon, text] = labels[s] || labels.off;
+    pill.className = `offline-badge sync-pill ${s}`;
+    pill.title = Sync.error || (Sync.enabled ? `Signed in as ${Sync.user.email}` : 'Sync & account');
+    $('use', pill).setAttribute('href', '#' + icon);
+    $('#storageLabel').textContent = text;
+    const live = $('#syncLive');
+    if (live) live.textContent = syncStatusText();
+  }
+
+  function syncStatusText() {
+    const s = Sync.status;
+    if (s === 'syncing') return 'Syncing now…';
+    if (s === 'offline') return 'You’re offline. Changes are saved here and will sync when you reconnect.';
+    if (s === 'error') return 'Last attempt failed: ' + Sync.error;
+    return Sync.lastSyncAt ? `Last synced ${relTime(Sync.lastSyncAt)}.` : 'Waiting to sync…';
+  }
+
+  function applyRemoteChanges(changes) {
+    let openChanged = false;
+    for (const c of changes) {
+      if (c.store === 'activity') {
+        if (c.deleted) delete state.activity[c.id]; else state.activity[c.id] = c.record.words;
+        continue;
+      }
+      const arr = c.store === 'projects' ? state.projects : state.posts;
+      const idx = arr.findIndex((x) => x.id === c.id);
+      if (c.deleted) {
+        if (idx >= 0) arr.splice(idx, 1);
+        if (c.id === state.postId) { save.cancel(); state.postId = null; editor = null; openChanged = true; }
+        continue;
+      }
+      const rec = c.record;
+      if (c.store === 'posts') { rec.tags = rec.tags || []; rec.ignored = rec.ignored || []; }
+      if (idx >= 0) { Object.keys(arr[idx]).forEach((k) => delete arr[idx][k]); Object.assign(arr[idx], rec); } else arr.push(rec);
+      if (c.id === state.postId) openChanged = true;
+    }
+    if (state.view === 'project' && !getProject(state.projectId)) { go('home', { projectId: null, postId: null }); return; }
+    if ($('.modal-backdrop')) { renderSidebar(); return; } // don't disturb an open dialog
+    if (openChanged) {
+      save.cancel();
+      render();
+      if (currentPost()) toast('Updated with changes from another device');
+      return;
+    }
+    renderSidebar();
+    if (state.view === 'home') renderHome($('#main'));
+    else if (state.view === 'board') renderBoard($('#main'));
+    else if ($('#collection')) renderCollection();
+  }
+
+  function choiceDialog({ title, message, choices }) {
+    return new Promise((resolve) => {
+      let result = null;
+      const m = modal(`
+        <div class="modal-head"><h2>${esc(title)}</h2></div>
+        <div class="modal-body"><p style="margin:0;color:var(--text-2)">${esc(message)}</p></div>
+        <div class="modal-foot" style="flex-wrap:wrap">${choices.map((c, i) => `<button class="btn ${c.primary ? 'primary' : ''}" data-choice="${i}">${esc(c.label)}</button>`).join('')}</div>`,
+      { onClose: () => resolve(result) });
+      m.el.addEventListener('click', (e) => { const b = e.target.closest('[data-choice]'); if (b) { result = choices[+b.dataset.choice].value; m.close(); } });
+    });
+  }
+
+  async function afterSignIn() {
+    toast('Signed in — syncing…');
+    let remote = 0;
+    try { remote = await Sync.remoteCount(); } catch (e) { toast(e.message); updateSyncBadge(); return; }
+    let mode = 'merge';
+    if (remote > 0 && state.posts.length > 0) {
+      mode = await choiceDialog({
+        title: 'Combine with this device?',
+        message: `Your account already has ${remote} project${remote === 1 ? '' : 's'}/post${remote === 1 ? '' : 's'}. This device has ${state.posts.length} post${state.posts.length === 1 ? '' : 's'}. What should happen to the posts on this device?`,
+        choices: [
+          { label: 'Keep both (merge)', value: 'merge' },
+          { label: 'Use my account’s posts only', value: 'replace', primary: true },
+        ],
+      }) || 'merge';
+    }
+    flushSave();
+    if (mode === 'replace') { editor = null; state.postId = null; await Sync.resetLocal(); } else await Sync.markAllDirty();
+    await Sync.syncNow();
+    await loadAll();
+    if (state.view === 'project' && !getProject(state.projectId)) state.view = 'home';
+    render();
+    updateSyncBadge();
+    if (Sync.status === 'idle') toast(`All synced — ${state.posts.length} posts on this device`);
+  }
+
+  function syncDialog() {
+    const SYNC_GUIDE = 'https://github.com/ebenezar15/Notes-App/blob/HEAD/SYNC.md';
+    let m;
+    const show = () => {
+      if (m) m.close();
+      if (!Sync.config) {
+        m = modal(`
+          <div class="modal-head"><h2>Sync across your devices</h2><button class="icon-btn" data-close><svg><use href="#i-x"/></svg></button></div>
+          <div class="modal-body">
+            <p style="margin-top:0;color:var(--text-2)">Sign in with the same email on your Mac, Windows PC and in the browser, and your projects and posts follow you. Sync uses a <b>free Supabase project that you own</b> — your writing never touches anyone else’s server. One-time setup takes about 5 minutes (<a href="${SYNC_GUIDE}" target="_blank" rel="noopener">full guide</a>).</p>
+            <label class="field"><span>Already set up on another device? Paste its setup code</span><input class="input" id="syCode" placeholder="INKWELL-…"></label>
+            <div class="settings-group" style="margin-top:6px">Or connect a new Supabase project</div>
+            <ol class="sync-steps">
+              <li>Create a free account and project at <a href="https://supabase.com/dashboard" target="_blank" rel="noopener">supabase.com</a>.</li>
+              <li>Open <b>SQL Editor</b>, paste the script below and press <b>Run</b>.</li>
+              <li>Open <b>Project Settings → API</b> and copy the <b>Project URL</b> and the <b>anon / publishable key</b> here.</li>
+            </ol>
+            <textarea class="sync-sql" readonly>${esc(Sync.SETUP_SQL)}</textarea>
+            <button class="btn sm" data-copy-sql style="margin:6px 0 14px"><svg><use href="#i-copy"/></svg>Copy SQL</button>
+            <label class="field"><span>Project URL</span><input class="input" id="syUrl" placeholder="https://abcdefgh.supabase.co"></label>
+            <label class="field"><span>Anon / publishable key</span><input class="input" id="syKey" placeholder="eyJhbGciOi… or sb_publishable_…"></label>
+            <div class="form-error" id="syErr"></div>
+          </div>
+          <div class="modal-foot"><button class="btn ghost" data-close>Not now</button><button class="btn primary" data-sy-next>Continue</button></div>`, { cls: 'wide' });
+        $('[data-copy-sql]', m.el).addEventListener('click', async () => toast((await Exporter.copyText(Sync.SETUP_SQL)) ? 'SQL copied' : 'Copy failed'));
+        $('[data-sy-next]', m.el).addEventListener('click', () => {
+          try {
+            const code = $('#syCode', m.el).value.trim();
+            if (code) Sync.applySetupCode(code); else Sync.configure($('#syUrl', m.el).value, $('#syKey', m.el).value);
+            updateSyncBadge();
+            show();
+          } catch (e) { $('#syErr', m.el).textContent = e.message; }
+        });
+        return;
+      }
+      if (!Sync.session) {
+        m = modal(`
+          <div class="modal-head"><h2>Sign in to sync</h2><button class="icon-btn" data-close><svg><use href="#i-x"/></svg></button></div>
+          <div class="modal-body">
+            <p style="margin-top:0;color:var(--text-2)">Use the same email and password on every device.</p>
+            <label class="field"><span>Email</span><input class="input" id="syEmail" type="email" autocomplete="email" placeholder="you@example.com"></label>
+            <label class="field"><span>Password</span><input class="input" id="syPass" type="password" autocomplete="current-password" placeholder="At least 6 characters"></label>
+            <div class="form-error" id="syErr">${esc(Sync.error || '')}</div>
+            <button class="btn ghost sm" data-sy-forget>Use a different sync project</button>
+          </div>
+          <div class="modal-foot"><button class="btn" data-sy-signup>Create account</button><button class="btn primary" data-sy-signin>Sign in</button></div>`);
+        const email = $('#syEmail', m.el), pass = $('#syPass', m.el), err = $('#syErr', m.el);
+        const run = async (fn) => {
+          err.textContent = '';
+          if (!email.value.trim() || pass.value.length < 6) { err.textContent = 'Enter your email and a password of at least 6 characters.'; return; }
+          const btns = $$('.modal-foot .btn', m.el);
+          btns.forEach((b) => { b.disabled = true; });
+          try { await fn(email.value.trim(), pass.value); }
+          catch (e) { err.textContent = e.message; }
+          finally { btns.forEach((b) => { b.disabled = false; }); }
+        };
+        $('[data-sy-signin]', m.el).addEventListener('click', () => run(async (e, p) => { await Sync.signIn(e, p); m.close(); m = null; await afterSignIn(); }));
+        pass.addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-sy-signin]', m.el).click(); });
+        $('[data-sy-signup]', m.el).addEventListener('click', () => run(async (e, p) => {
+          const r = await Sync.signUp(e, p);
+          if (r.signedIn) { m.close(); m = null; await afterSignIn(); }
+          else err.innerHTML = '<span style="color:var(--s-ready)">Account created! Check your email for a confirmation link, then come back and press Sign in.</span>';
+        }));
+        $('[data-sy-forget]', m.el).addEventListener('click', () => { Sync.forget(); updateSyncBadge(); show(); });
+        setTimeout(() => email.focus(), 30);
+        return;
+      }
+      const u = Sync.user;
+      m = modal(`
+        <div class="modal-head"><h2>Sync & account</h2><button class="icon-btn" data-close><svg><use href="#i-x"/></svg></button></div>
+        <div class="modal-body">
+          <div class="sync-account"><span class="av">${esc(u.email[0].toUpperCase())}</span><div><b>${esc(u.email)}</b><small id="syncLive">${esc(syncStatusText())}</small></div>
+            <button class="btn sm" data-sy-now><svg><use href="#i-sync"/></svg>Sync now</button></div>
+          <div class="settings-row"><div><b>Add another device</b><small>Install Inkwell there (or open the web version), choose <i>Set up sync</i>, paste this code, then sign in with the same email.</small></div>
+            <button class="btn sm" data-sy-code><svg><use href="#i-copy"/></svg>Copy setup code</button></div>
+          <div class="settings-row"><div><b>What syncs</b><small>Projects, posts (with images, covers and tags) and writing stats. Version history and app settings stay on each device.</small></div></div>
+        </div>
+        <div class="modal-foot"><button class="btn danger left" data-sy-out>Sign out</button><button class="btn primary" data-close>Done</button></div>`);
+      $('[data-sy-now]', m.el).addEventListener('click', () => { flushSave(); Sync.syncNow(); });
+      $('[data-sy-code]', m.el).addEventListener('click', async () => toast((await Exporter.copyText(Sync.setupCode())) ? 'Setup code copied — paste it on your other device' : 'Copy failed'));
+      $('[data-sy-out]', m.el).addEventListener('click', async () => {
+        const ok = await confirmDialog({ title: 'Sign out?', message: 'Your posts stay on this device, but stop syncing until you sign in again.', confirm: 'Sign out' });
+        if (!ok) return;
+        await Sync.signOut();
+        m.close();
+        updateSyncBadge();
+        toast('Signed out');
+      });
+    };
+    show();
+  }
+
   async function seed() {
     const blog = newProject({ name: 'My Newsletter', emoji: '✍️', color: 0, description: 'Weekly essays on craft, focus and creative work.' });
     const notes = newProject({ name: 'Book Notes', emoji: '📚', color: 2, description: 'Short reviews and highlights from what I read.' });
@@ -2326,7 +2547,7 @@
       status: 'ready',
       tags: ['guide'],
       cover: { type: 'gradient', value: COVERS[0] },
-      content: `<p>Inkwell keeps every word on <strong>this device</strong>. There is no account, no sync and no internet required — just you and the page.</p>
+      content: `<p>Inkwell keeps every word on <strong>this device</strong>. No account or internet is required — and if you want, you can sign in to sync across your Mac, PC and the web.</p>
 <h2>How it's organised</h2>
 <ul><li><strong>Projects</strong> are your publications or series. Give each one an icon and colour.</li><li><strong>Posts</strong> live inside projects and move through <em>Idea → Draft → Editing → Ready → Published</em>.</li><li>The <strong>Board</strong> shows your whole editorial pipeline. Drag cards between columns.</li></ul>
 <h2>Writing tools</h2>
@@ -2378,9 +2599,19 @@
         state.panel = window.innerWidth > 820 ? loc.panel || null : null;
       }
     } catch (e) { /* ignore */ }
+    if (/Electron/.test(navigator.userAgent)) document.documentElement.classList.add('electron', isMac ? 'electron-mac' : 'electron-other');
     render();
+    Sync.init({
+      onRemote: applyRemoteChanges,
+      onStatus: updateSyncBadge,
+      onMarked: (store, id, at) => {
+        const rec = store === 'projects' ? getProject(id) : store === 'posts' ? getPost(id) : null;
+        if (rec && rec.updatedAt === at) rec._synced = at;
+      },
+    });
+    updateSyncBadge();
     DB.estimate().then((est) => {
-      if (est && est.persisted) $('#storageLabel').textContent = 'Saved & protected on this device';
+      if (est && est.persisted && Sync.status === 'off') $('#storageLabel').textContent = 'Saved & protected on this device';
     });
     if (navigator.storage && navigator.storage.persisted) {
       navigator.storage.persisted().then((p) => { if (!p && state.posts.length > 4) DB.persist(); });
