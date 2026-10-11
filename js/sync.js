@@ -44,11 +44,46 @@ drop trigger if exists ${TABLE}_touch on public.${TABLE};
 create trigger ${TABLE}_touch before insert or update on public.${TABLE}
   for each row execute function public.${TABLE}_touch();`;
 
+  /** Accepts whatever the user copies from Supabase and returns the bare project URL,
+   *  e.g. "https://abcd.supabase.co/rest/v1/" or a dashboard link -> "https://abcd.supabase.co". */
+  function normalizeProjectUrl(input) {
+    let raw = String(input || '').trim().replace(/^['"<]+|['">]+$/g, '');
+    const dash = /supabase\.com\/dashboard\/project\/([a-z0-9]{15,})/i.exec(raw);
+    if (dash) return `https://${dash[1].toLowerCase()}.supabase.co`;
+    if (/^[a-z0-9]{15,}$/i.test(raw)) return `https://${raw.toLowerCase()}.supabase.co`;
+    if (!/^https?:\/\//i.test(raw) && /\.supabase\.(co|in)\b/i.test(raw)) raw = 'https://' + raw;
+    let u;
+    try { u = new URL(raw); } catch (e) { return ''; }
+    return u.origin; // drops /rest/v1, /auth/v1, query strings and trailing slashes
+  }
+
+  /** Refuse secret keys — they bypass row-level security and must never live in an app. */
+  function checkPublicKey(key) {
+    if (/^sb_secret_/i.test(key)) return 'That is the secret key. Use the anon / publishable key instead.';
+    const parts = key.split('.');
+    if (parts.length === 3) {
+      try {
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+        if (payload.role === 'service_role') return 'That is the service_role (secret) key. Use the anon / public key instead.';
+      } catch (e) { /* not a JWT we can read; let the server decide */ }
+    }
+    return '';
+  }
+
+  function friendlyError(msg) {
+    if (/invalid path specified/i.test(msg)) return 'The project URL looks wrong. Use just https://xxxx.supabase.co (no /rest/v1 at the end).';
+    if (/invalid api key|no api key/i.test(msg)) return 'Supabase rejected the key. Copy the anon / publishable key from Project Settings → API.';
+    if (/email not confirmed/i.test(msg)) return 'Please confirm your email first — check your inbox for the link from Supabase, then sign in.';
+    if (/invalid login credentials/i.test(msg)) return 'Wrong email or password. New here? Press “Create account” first.';
+    return msg;
+  }
+
   const read = (k) => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
   const write = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } };
 
   const Sync = {
     SETUP_SQL,
+    normalizeProjectUrl,
     status: 'off', // off | signed-out | idle | syncing | offline | error
     error: '',
     lastSyncAt: 0,
@@ -57,7 +92,11 @@ create trigger ${TABLE}_touch before insert or update on public.${TABLE}
     _running: null,
     _again: false,
 
-    get config() { return read(CFG_KEY); },
+    get config() {
+      const c = read(CFG_KEY);
+      if (c && c.url) c.url = normalizeProjectUrl(c.url) || c.url; // repairs URLs saved by older versions
+      return c;
+    },
     get session() { return read(SESSION_KEY); },
     get user() { const s = read(SESSION_KEY); return s && s.user; },
     get enabled() { return !!(this.config && this.session); },
@@ -82,10 +121,13 @@ create trigger ${TABLE}_touch before insert or update on public.${TABLE}
 
     // ---------------------------------------------------------------- config
     configure(url, anonKey) {
-      url = String(url || '').trim().replace(/\/+$/, '');
-      if (!/^https:\/\/[\w.-]+/.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url)) throw new Error('The project URL should look like https://xxxx.supabase.co');
-      if (!anonKey || anonKey.trim().length < 20) throw new Error('Paste the project’s anon / publishable key.');
-      write(CFG_KEY, { url, anonKey: anonKey.trim() });
+      url = normalizeProjectUrl(url);
+      if (!/^https:\/\/[\w.-]+$/.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url)) throw new Error('The project URL should look like https://xxxx.supabase.co');
+      anonKey = String(anonKey || '').trim();
+      if (anonKey.length < 20) throw new Error('Paste the project’s anon / publishable key.');
+      const bad = checkPublicKey(anonKey);
+      if (bad) throw new Error(bad);
+      write(CFG_KEY, { url, anonKey });
       this.setStatus(this.session ? 'idle' : 'signed-out');
     },
     setupCode() {
@@ -115,7 +157,7 @@ create trigger ${TABLE}_touch before insert or update on public.${TABLE}
         });
       } catch (e) { throw new Error('Can’t reach the sync server — are you online?'); }
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error_description || json.msg || json.message || `Sign-in failed (${res.status})`);
+      if (!res.ok) throw new Error(friendlyError(json.error_description || json.msg || json.message || `Sign-in failed (${res.status})`));
       return json;
     },
     saveSession(json) {
@@ -168,7 +210,7 @@ create trigger ${TABLE}_touch before insert or update on public.${TABLE}
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         if (res.status === 404 || /relation .* does not exist|schema cache/i.test(j.message || '')) throw new Error('The sync table is missing — run the setup SQL in your Supabase project.');
-        throw new Error(j.message || `Sync request failed (${res.status})`);
+        throw new Error(friendlyError(j.message || `Sync request failed (${res.status})`));
       }
       return res.status === 204 ? null : res.json().catch(() => null);
     },

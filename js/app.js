@@ -2464,7 +2464,7 @@
             </ol>
             <textarea class="sync-sql" readonly>${esc(Sync.SETUP_SQL)}</textarea>
             <button class="btn sm" data-copy-sql style="margin:6px 0 14px"><svg><use href="#i-copy"/></svg>Copy SQL</button>
-            <label class="field"><span>Project URL</span><input class="input" id="syUrl" placeholder="https://abcdefgh.supabase.co"></label>
+            <label class="field"><span>Project URL</span><input class="input" id="syUrl" placeholder="https://abcdefgh.supabase.co — extra /rest/v1 is fine"></label>
             <label class="field"><span>Anon / publishable key</span><input class="input" id="syKey" placeholder="eyJhbGciOi… or sb_publishable_…"></label>
             <div class="form-error" id="syErr"></div>
           </div>

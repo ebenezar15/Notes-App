@@ -51,6 +51,7 @@ The **row-level security policy** means each login can only ever read and write 
 
 ## 3. Connect Inkwell
 1. In Supabase open **Project Settings → API** (or **Connect**). Copy the **Project URL** and the **anon / publishable key**. (Never use the `service_role` / secret key.)
+   The URL should be just `https://<your-project>.supabase.co`. If you copy one ending in `/rest/v1/`, Inkwell trims it for you.
 2. In Inkwell: **Settings → Sync across devices → Set up**, paste both, press **Continue**.
 3. Press **Create account**, using your email and a password.
    Supabase sends a confirmation email by default — click the link, then come back and press **Sign in**.
