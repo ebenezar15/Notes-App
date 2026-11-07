@@ -3,7 +3,7 @@
 Inkwell is a writing app for planning, drafting, polishing and keeping a record of blog posts. When a post is ready, you can move it to **Substack**.
 Everything runs **on your device** and works with no internet connection. No account is needed. If you want, you can sign in to sync your projects across your Mac, PC and the browser (free, see [SYNC.md](SYNC.md)). Otherwise your words never leave the device unless you export or copy them.
 
-It's modelled on the calm feel of Apple Notes and Notability, with more visuals added: project covers, an editorial board, writing-activity charts and readability graphs.
+It's modelled on the calm feel of Apple Notes and Notability, with more visuals added: project covers, an editorial board, a content calendar, writing-activity charts and readability graphs. Smooth motion runs throughout, including screen transitions, charts that draw themselves and an ink-drop launch animation. You can calm it down under **Settings → Motion → Reduced**.
 
 ## Download
 
@@ -34,7 +34,18 @@ New builds are made automatically by GitHub Actions on every push (`.github/work
 - **Dashboard**: word counts, a day streak, a 20-week writing heatmap, a pipeline donut chart and a daily goal ring
 - Search across every post, pinning, duplicating, and moving posts by dragging them onto a project
 
+**Plan**
+- **Content calendar**: drag posts onto days to plan what goes out when. Unscheduled drafts wait in a tray, and the dashboard lists what's coming up.
+- A **command palette** (`⌘/Ctrl + K`) that jumps to any post, project or action from one search box
+
 **Write**
+- **Templates** for a how-to guide, list post, personal essay, review, weekly roundup, interview or case study. Press `Tab` to jump between the `[placeholders]`.
+- **Find & replace** (`⌘/Ctrl + F`) with match-case and whole-word options. Replacements keep the original's capitalisation.
+- An **offline thesaurus**: select a word and choose **Synonyms**
+- **Research notes**: a private notes tab on every post that collects any links you paste. Clip selected text into it with one click. Notes are never exported.
+- **Writing sprints**: a timer of 10–60 minutes with an optional word target and generated focus sounds (brown, pink or white noise). Results appear at the end.
+- **Read aloud**: hear your draft with each sentence highlighted as it's read, adjust the speed, and pick a voice. It uses your computer's built-in voices.
+- **Focus options**: typewriter scrolling, which keeps the line you're writing mid-screen, and dimming of every paragraph except the one you're on
 - A distraction-free editor with serif typography, a sticky toolbar and a floating toolbar that appears when you select text
 - A `/` menu for blocks, plus Markdown shortcuts (`#`, `##`, `###`, `>`, `-`, `1.`)
 - Images by upload, paste or drag-and-drop. Large photos are shrunk automatically.
@@ -48,6 +59,9 @@ New builds are made automatically by GitHub Actions on every push (`.github/work
 - Style suggestions: wordy phrases, "very + weak adjective" swaps, filler words, clichés, passive voice and long sentences
 - **Fix all** in one click, or accept and ignore suggestions one at a time. The ✨ **Fix** button in the selection toolbar repairs just the selected sentences.
 - Insights: a writing score, a readability gauge (Flesch reading ease and grade level), a sentence-rhythm chart, most-used words, an outline and a word-count goal
+
+**Headline studio**
+- Scores your title from 0 to 100. It checks length, word count, power and emotion words, specific numbers, a clear angle and clean style, and previews how the post will look in a subscriber's inbox.
 
 **Social media**
 - **Instagram carousel studio:** turns a post into designed slides automatically (cover, sections, quotes, lists, images, and a call to action). It has 7 designs, three sizes (4:5 feed, 1:1 square, 9:16 story) and up to 20 slides. You can edit, reorder, add or remove slides.
@@ -100,7 +114,10 @@ npm run build:web      # build dist/web (website) and dist/Inkwell.html (single 
 ## Keyboard shortcuts
 | Action | Shortcut |
 | --- | --- |
-| Search | `⌘/Ctrl + K` |
+| Command palette | `⌘/Ctrl + K` or `⌘/Ctrl + P` |
+| Find & replace (in a post) | `⌘/Ctrl + F` |
+| Next / previous `[placeholder]` | `Tab` / `Shift + Tab` |
+| Hide / show sidebar | `⌘/Ctrl + \` |
 | New post | `⌘/Ctrl + Alt + N` |
 | Save snapshot | `⌘/Ctrl + S` |
 | Focus mode | `⌘/Ctrl + .` |
@@ -118,6 +135,8 @@ js/exporter.js        Markdown/HTML/Substack export, clipboard, ZIP writer
 js/sketch.js          Pressure-sensitive sketch pad
 js/social.js          Instagram/LinkedIn carousels, captions, threads (canvas → PNG/PDF)
 js/sync.js            Optional account sync (Supabase Auth + REST, offline-first)
+js/tools.js           Templates, headline scoring, thesaurus, fuzzy search, read aloud, focus sounds
+js/motion.js          View transitions, staggered entrances, count-ups, ripples, launch animation
 electron/main.js      Desktop app shell (macOS, Windows, Linux)
 scripts/build-web.js  Builds the website and the single-file app
 js/db.js              IndexedDB storage
