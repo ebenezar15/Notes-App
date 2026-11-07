@@ -662,6 +662,7 @@
     const post = currentPost();
     editor = null;
     if (find.open) closeFind();
+    if ($('#aiPop')) closeAIRewrite();
     if (Tools.Speech.playing) Tools.Speech.stop();
     if (!post) {
       const proj = getProject(state.projectId);
@@ -1203,7 +1204,8 @@
       <button data-bcmd="quote" title="Quote"><svg><use href="#i-quote"/></svg></button>
       <button data-bcmd="highlight" title="Highlight">🖍</button>
       <span class="sep"></span>
-      <button data-bcmd="fix" title="Fix spelling, grammar & punctuation in the selection"><svg><use href="#i-sparkle"/></svg>Fix</button>
+      <button data-bcmd="ai" class="ai-bubble" title="Rewrite with AI (${MOD}⇧E)"><svg><use href="#i-sparkle"/></svg>Rewrite</button>
+      <button data-bcmd="fix" title="Fix spelling, grammar & punctuation in the selection"><svg><use href="#i-check"/></svg>Fix</button>
       ${/^[A-Za-z][A-Za-z'’-]{1,30}$/.test(s.toString().trim()) ? '<button data-bcmd="synonyms" title="Offline thesaurus">Aa Synonyms</button>' : ''}
       <button data-bcmd="note" title="Save the selection to this post\'s research notes"><svg><use href="#i-note"/></svg></button>`;
     bubble.hidden = false;
@@ -1228,6 +1230,7 @@
       return;
     }
     if (cmd === 'synonyms') { showSynonyms(b); return; }
+    if (cmd === 'ai') { openAIRewrite(); return; }
     if (cmd === 'note') {
       const text = window.getSelection().toString().trim();
       hideBubble();
@@ -1535,6 +1538,7 @@
       <div class="diff">${contextHTML(i)}</div>
       <div class="acts">
         ${fixable ? `<button class="btn sm primary" data-issue-act="accept"><svg><use href="#i-check"/></svg>${g.items.length > 1 ? `Accept all ${g.items.length}` : i.replacement === '' ? 'Remove' : 'Accept'}</button>` : ''}
+        ${AI_RULES[i.rule] ? '<button class="btn sm ai-btn" data-issue-act="ai"><svg><use href="#i-sparkle"/></svg>Rewrite with AI</button>' : ''}
         <button class="btn sm ghost" data-issue-act="ignore">${fixable ? 'Ignore' : 'Dismiss'}</button>
       </div>
     </div>`;
@@ -1560,6 +1564,7 @@
       if (!n) toast('That text changed — rechecked.');
       return;
     }
+    if (act && act.dataset.issueAct === 'ai') { rewriteIssue(group.items[0]); return; }
     if (act && act.dataset.issueAct === 'ignore') {
       const post = editor.post;
       post.ignored = Array.from(new Set([...(post.ignored || []), ...group.items.map(ignoreKey)]));
@@ -1941,6 +1946,9 @@
         <div class="settings-row"><div><b>Dim other paragraphs</b><small>Fade everything except the paragraph you're on</small></div><label class="switch"><input type="checkbox" id="setDim" ${s.dim ? 'checked' : ''}><i></i></label></div>
         <div class="settings-row"><div><b>Live proofreading</b><small>Underline issues while you type</small></div><label class="switch"><input type="checkbox" id="setLive" ${s.liveCheck ? 'checked' : ''}><i></i></label></div>
         <div class="settings-row"><div><b>Smart typography</b><small>Suggest curly quotes and em dashes</small></div><label class="switch"><input type="checkbox" id="setTypo" ${s.categories.typography ? 'checked' : ''}><i></i></label></div>
+        <div class="settings-group">AI</div>
+        <div class="settings-row"><div><b>AI rewrite suggestions</b><small>${AI.configured ? `On — ${esc(AI.modelName(AI.settings.model))}, using your Anthropic API key` : 'Optional — get better phrasings from Claude using your own API key'}</small></div>
+          <button class="btn sm" data-ai-open><svg><use href="#i-sparkle"/></svg>${AI.configured ? 'Manage' : 'Set up'}</button></div>
         <div class="settings-group">Your data</div>
         <div class="settings-row"><div><b>Sync across devices</b><small>${Sync.enabled ? `Signed in as ${esc(Sync.user.email)}` : Sync.config ? 'Set up — sign in to start syncing' : 'Free, optional — use the same login on Mac, Windows and the web'}</small></div>
           <button class="btn sm" data-sync-open><svg><use href="#i-cloud"/></svg>${Sync.enabled ? 'Manage' : 'Set up'}</button></div>
@@ -1969,6 +1977,7 @@
     const persistBtn = $('[data-persist]', el);
     if (persistBtn) persistBtn.addEventListener('click', async () => { const ok = await DB.persist(); toast(ok ? 'Storage is now protected' : 'Your browser declined — install the app to improve this'); m.close(); });
     $('[data-sync-open]', el).addEventListener('click', () => { m.close(); syncDialog(); });
+    $('[data-ai-open]', el).addEventListener('click', () => { m.close(); aiSettingsDialog(); });
     $('[data-backup]', el).addEventListener('click', exportBackup);
     $('[data-restore]', el).addEventListener('click', () => { m.close(); importBackup(); });
     $('[data-export-all]', el).addEventListener('click', exportAllZip);
@@ -2388,6 +2397,7 @@
     if ($('.palette-backdrop')) return; // the palette handles its own keys
     if (mod && !e.shiftKey && (k === 'p' || (k === 'k' && !(editor && editor.body.contains(document.activeElement))))) { e.preventDefault(); openPalette(); }
     else if (mod && k === 'f' && editor && !e.shiftKey) { e.preventDefault(); openFind(); }
+    else if (mod && e.shiftKey && k === 'e' && editor) { e.preventDefault(); openAIRewrite(); }
     else if (mod && (e.key === '\\' || e.code === 'Backslash')) { e.preventDefault(); toggleSidebarCollapsed(); }
     else if (mod && e.altKey && (k === 'n' || e.code === 'KeyN')) { e.preventDefault(); createPost(state.view === 'project' ? state.projectId : null); }
     else if (mod && k === 's') { e.preventDefault(); snapshotNow(); }
@@ -2395,6 +2405,7 @@
     else if (mod && e.shiftKey && k === 'p') { e.preventDefault(); if (editor) togglePanel('proofread'); }
     else if (e.key === 'Escape') {
       if ($('.menu')) closeMenus();
+      else if ($('#aiPop')) closeAIRewrite();
       else if (slash.open) closeSlash();
       else if (find.open) closeFind();
       else if ($('#app').classList.contains('focus')) toggleFocus(false);
@@ -3093,6 +3104,7 @@
         { label: 'Headline studio & publishing', icon: 'i-send', keywords: 'substack title score inbox', run: panel('publish') },
         { label: 'Research notes', icon: 'i-note', keywords: 'notes links', run: panel('notes') },
         { label: 'Version history', icon: 'i-history', keywords: 'snapshot restore', run: panel('history') },
+        { label: 'Rewrite with AI', icon: 'i-sparkle', hint: `${MOD}⇧E`, keywords: 'claude improve rephrase shorter clearer sentence', run: () => openAIRewrite() },
         { label: 'Read aloud', icon: 'i-speaker', keywords: 'speech listen voice', run: startReadAloud },
         { label: 'Social studio — Instagram carousel', icon: 'i-insta', keywords: 'linkedin thread caption share', run: openSocial },
         { label: 'Preview as a Substack post', icon: 'i-eye', run: previewDialog },
@@ -3108,6 +3120,7 @@
       { label: 'Hide / show sidebar', icon: 'i-sidebar', hint: `${MOD}\\`, run: () => toggleSidebarCollapsed() },
       { label: 'Settings', icon: 'i-settings', keywords: 'preferences motion backup', run: settingsDialog },
       { label: 'Sync & account', icon: 'i-cloud', keywords: 'login supabase devices', run: syncDialog },
+      { label: 'AI rewrite settings', icon: 'i-sparkle', keywords: 'claude api key anthropic model', run: aiSettingsDialog },
       { label: 'What’s new in Inkwell', icon: 'i-gift', keywords: 'features tour help', run: whatsNew },
     ];
   }
@@ -3219,6 +3232,268 @@
       <div class="modal-foot"><button class="btn ghost" data-close>Later</button><button class="btn primary" data-wn-try><svg><use href="#i-command"/></svg>Try the command palette</button></div>`, { cls: 'wide whats-new' });
     Motion.stagger($('.wn-list', m.el), '.wn-item');
     $('[data-wn-try]', m.el).addEventListener('click', () => { m.close(); setTimeout(openPalette, 50); });
+  }
+
+  // ======================================================================
+  // AI rewrite suggestions (Claude, optional, user's own API key)
+  // ======================================================================
+  const AI_RULES = {
+    'long-sentence': ['clearer', 'Split it into shorter, easier sentences.'],
+    passive: ['improve', 'Use the active voice.'],
+    cliche: ['vivid', 'Replace the cliché with fresh, specific wording.'],
+    wordy: ['shorter', ''],
+    very: ['vivid', ''],
+    filler: ['shorter', ''],
+  };
+  const ai = { range: null, block: null, original: '', paragraph: '', mode: 'improve', focus: '', controller: null, results: [] };
+
+  /** The sentence around the caret, as a Range (used when nothing is selected). */
+  function sentenceRangeAtCaret() {
+    const sel = window.getSelection();
+    if (!editor || !sel.rangeCount) return null;
+    const blocks = proofBlocks(editor.body);
+    let n = sel.anchorNode;
+    while (n && !blocks.includes(n)) n = n.parentNode;
+    if (!n) return null;
+    const { text, segs } = blockText(n);
+    const probe = document.createRange();
+    probe.selectNodeContents(n);
+    probe.setEnd(sel.anchorNode, sel.anchorOffset);
+    const caret = probe.toString().length;
+    const s = Proofreader.splitSentences(text).find((x) => caret >= x.start && caret <= x.end) || Proofreader.splitSentences(text)[0];
+    return s && segs.length ? rangeFor(n, s.start, s.end) : null;
+  }
+
+  function wordDiff(a, b) {
+    // Highlights the words in `b` that are new compared with `a` (LCS over words).
+    const A = a.split(/(\s+)/), B = b.split(/(\s+)/);
+    if (A.length * B.length > 400000) return esc(b);
+    const dp = Array.from({ length: A.length + 1 }, () => new Uint16Array(B.length + 1));
+    for (let i = A.length - 1; i >= 0; i--) for (let j = B.length - 1; j >= 0; j--) {
+      dp[i][j] = A[i].toLowerCase() === B[j].toLowerCase() ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+    let i = 0, j = 0, out = '';
+    while (j < B.length) {
+      if (i < A.length && A[i].toLowerCase() === B[j].toLowerCase()) { out += esc(B[j]); i++; j++; }
+      else if (i < A.length && dp[i + 1][j] >= dp[i][j + 1]) i++;
+      else { out += /^\s+$/.test(B[j]) ? B[j] : `<ins>${esc(B[j])}</ins>`; j++; }
+    }
+    return out.replace(/<\/ins>(\s+)<ins>/g, '$1');
+  }
+
+  function openAIRewrite({ range, mode = 'improve', focus = '' } = {}) {
+    if (!editor) return;
+    hideBubble();
+    let r = range;
+    if (!r) {
+      const sel = window.getSelection();
+      if (sel.rangeCount && !sel.isCollapsed && editor.body.contains(sel.anchorNode)) r = sel.getRangeAt(0).cloneRange();
+      else r = sentenceRangeAtCaret();
+    }
+    if (!r || !r.toString().trim()) { toast('Select a sentence or paragraph to rewrite'); return; }
+    const blocks = proofBlocks(editor.body).filter((b) => r.intersectsNode(b));
+    if (blocks.length > 1) { toast('Select text within one paragraph to rewrite it'); return; }
+    Object.assign(ai, {
+      range: r.cloneRange(), block: blocks[0] || null, original: r.toString(), mode, focus,
+      paragraph: blocks[0] ? blockText(blocks[0]).text : '',
+    });
+    if (hasHighlights()) CSS.highlights.set('ai-target', new Highlight(ai.range));
+    renderAIPop();
+    if (AI.configured) requestRewrite();
+  }
+
+  function aiPopEl() {
+    let pop = $('#aiPop');
+    if (!pop) {
+      pop = document.createElement('div');
+      pop.id = 'aiPop';
+      pop.className = 'ai-pop';
+      document.body.appendChild(pop);
+      pop.addEventListener('mousedown', (e) => { if (!e.target.closest('input, textarea, select')) e.preventDefault(); });
+      pop.addEventListener('click', onAIPopClick);
+      setTimeout(() => document.addEventListener('mousedown', aiOutside), 0);
+    }
+    return pop;
+  }
+  function aiOutside(e) { const pop = $('#aiPop'); if (pop && !pop.contains(e.target) && !e.target.closest('.menu, .modal-backdrop')) closeAIRewrite(); }
+
+  function positionAIPop(pop) {
+    if (window.innerWidth <= 640) { pop.style.left = ''; pop.style.top = ''; return; } // bottom sheet on phones
+    const rect = ai.range.getBoundingClientRect();
+    const w = Math.min(460, window.innerWidth - 24);
+    const h = pop.offsetHeight || 360;
+    const left = Math.max(12, Math.min(window.innerWidth - w - 12, rect.left + rect.width / 2 - w / 2));
+    let top = rect.bottom + 12;
+    if (top + h > window.innerHeight - 12) top = Math.max(12, rect.top - h - 12);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  }
+
+  function renderAIPop(body) {
+    const pop = aiPopEl();
+    const { model } = AI.settings;
+    if (!AI.configured) {
+      pop.innerHTML = `
+        <div class="ai-head"><span class="ai-badge"><svg><use href="#i-sparkle"/></svg>AI rewrite</span><span class="spacer"></span><button class="icon-btn sm" data-ai="close" title="Close"><svg><use href="#i-x"/></svg></button></div>
+        <div class="ai-setup">
+          <div class="ai-setup-art">✨</div>
+          <b>Get rewrite suggestions from Claude</b>
+          <p>Add your own Anthropic API key once. You pay Anthropic directly per use — a typical rewrite costs a fraction of a cent. Only the passage you choose is sent, and only when you ask.</p>
+          <button class="btn primary" data-ai="settings"><svg><use href="#i-settings"/></svg>Set up AI rewrite</button>
+        </div>`;
+      positionAIPop(pop);
+      return;
+    }
+    pop.innerHTML = `
+      <div class="ai-head"><span class="ai-badge"><svg><use href="#i-sparkle"/></svg>AI rewrite</span><span class="ai-model" title="Change in Settings → AI rewrite">${esc(AI.modelName(model))}</span><span class="spacer"></span>
+        <button class="icon-btn sm" data-ai="close" title="Close (Esc)"><svg><use href="#i-x"/></svg></button></div>
+      <div class="ai-modes">${Object.entries(AI.MODES).map(([k, v]) => `<button class="ai-mode ${k === ai.mode ? 'active' : ''}" data-ai-mode="${k}">${esc(v.label)}</button>`).join('')}</div>
+      <div class="ai-results" id="aiResults">${body || ''}</div>
+      <div class="ai-foot"><button class="btn sm ghost" data-ai="again"><svg><use href="#i-sync"/></svg>More options</button><span class="spacer"></span><small>Suggestions by Claude — review before publishing</small></div>`;
+    positionAIPop(pop);
+  }
+
+  async function requestRewrite() {
+    if (ai.controller) ai.controller.abort();
+    const controller = new AbortController();
+    ai.controller = controller;
+    const results = $('#aiResults');
+    if (results) results.innerHTML = `<div class="ai-loading"><span class="ai-dots"><i></i><i></i><i></i></span>Claude is rewriting…</div>${'<div class="ai-skel"><i></i><i></i><i></i></div>'.repeat(3)}`;
+    positionAIPop(aiPopEl());
+    try {
+      const res = await AI.rewrite({
+        text: ai.original, paragraph: ai.paragraph, title: editor ? editor.title.value : '', mode: ai.mode, focus: ai.focus, signal: controller.signal,
+      });
+      if (controller !== ai.controller) return;
+      ai.results = res.suggestions;
+      const list = $('#aiResults');
+      if (!list) return;
+      list.innerHTML = res.suggestions.map((s, i) => `
+        <div class="ai-card" style="--i:${i}">
+          <div class="ai-card-head"><span class="ai-label">${esc(s.label || `Option ${i + 1}`)}</span><span class="spacer"></span>
+            <button class="icon-btn sm" data-ai-copy="${i}" title="Copy"><svg><use href="#i-copy"/></svg></button>
+            <button class="btn sm primary" data-ai-use="${i}"><svg><use href="#i-check"/></svg>Use</button></div>
+          <div class="ai-text">${wordDiff(ai.original, s.text)}</div>
+          ${s.why ? `<small class="ai-why">${esc(s.why)}</small>` : ''}
+        </div>`).join('');
+      positionAIPop(aiPopEl());
+    } catch (err) {
+      if (controller !== ai.controller || err.code === 'aborted') return;
+      const list = $('#aiResults');
+      if (list) {
+        list.innerHTML = `<div class="ai-error"><b>${err.code === 'no-change' ? '👍 Already reads well' : 'Couldn’t get suggestions'}</b><p>${esc(err.message)}</p>
+          ${['auth', 'permission', 'model', 'setup'].includes(err.code) ? '<button class="btn sm" data-ai="settings"><svg><use href="#i-settings"/></svg>Open AI settings</button>' : '<button class="btn sm" data-ai="again">Try again</button>'}</div>`;
+      }
+    }
+  }
+
+  function applyAISuggestion(i) {
+    const s = ai.results[i];
+    if (!s || !editor) return;
+    let r = ai.range;
+    if (!r || r.toString() !== ai.original) {
+      // The document changed since the request; find the passage again.
+      const idx = ai.block && ai.block.isConnected ? blockText(ai.block).text.indexOf(ai.original) : -1;
+      r = idx >= 0 ? rangeFor(ai.block, idx, idx + ai.original.length) : null;
+    }
+    if (!r) { toast('That passage changed — select it again to rewrite'); return; }
+    editor.body.focus({ preventScroll: true });
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    document.execCommand('insertText', false, s.text);
+    const btn = $(`[data-ai-use="${i}"]`);
+    if (btn) { const br = btn.getBoundingClientRect(); Motion.sparkle(br.left + br.width / 2, br.top + br.height / 2); }
+    closeAIRewrite();
+    onBodyChanged();
+    runCheck();
+    toast(`Rewritten ✨ — ${MOD}Z to undo`);
+  }
+
+  function onAIPopClick(e) {
+    const mode = e.target.closest('[data-ai-mode]');
+    if (mode) {
+      ai.mode = mode.dataset.aiMode;
+      $$('.ai-mode', aiPopEl()).forEach((b) => b.classList.toggle('active', b === mode));
+      requestRewrite();
+      return;
+    }
+    const use = e.target.closest('[data-ai-use]');
+    if (use) { applyAISuggestion(+use.dataset.aiUse); return; }
+    const copy = e.target.closest('[data-ai-copy]');
+    if (copy) { Exporter.copyText(ai.results[+copy.dataset.aiCopy].text).then((ok) => toast(ok ? 'Copied' : 'Copy failed')); return; }
+    const act = e.target.closest('[data-ai]');
+    if (!act) return;
+    if (act.dataset.ai === 'close') closeAIRewrite();
+    else if (act.dataset.ai === 'again') requestRewrite();
+    else if (act.dataset.ai === 'settings') { closeAIRewrite(); aiSettingsDialog(); }
+  }
+
+  function closeAIRewrite() {
+    if (ai.controller) { ai.controller.abort(); ai.controller = null; }
+    document.removeEventListener('mousedown', aiOutside);
+    const pop = $('#aiPop');
+    if (pop) { pop.classList.add('out'); setTimeout(() => pop.remove(), 180); }
+    if (hasHighlights()) CSS.highlights.delete('ai-target');
+  }
+
+  /** Rewrite button on proofreading cards for long sentences, passive voice, clichés and wordiness. */
+  function rewriteIssue(issue) {
+    const [mode, focus] = AI_RULES[issue.rule] || ['improve', ''];
+    const s = Proofreader.splitSentences(issue.text).find((x) => issue.start >= x.start && issue.start < x.end);
+    const r = s ? rangeFor(issue.block, s.start, s.end) : rangeFor(issue.block, issue.start, issue.end);
+    if (!r) return;
+    const sc = $('#editorScroll');
+    const rect = r.getBoundingClientRect();
+    const sr = sc.getBoundingClientRect();
+    if (rect.top < sr.top + 60 || rect.bottom > sr.bottom - 200) sc.scrollTop += rect.top - sr.top - sr.height / 4;
+    openAIRewrite({ range: r, mode, focus });
+  }
+
+  function aiSettingsDialog() {
+    const cur = AI.settings;
+    const m = modal(`
+      <div class="modal-head"><h2>AI rewrite</h2><button class="icon-btn" data-close><svg><use href="#i-x"/></svg></button></div>
+      <div class="modal-body">
+        <p style="margin-top:0;color:var(--text-2)">Rewrite suggestions come from <b>Claude</b>, Anthropic’s AI, using your own API key. You pay Anthropic directly for what you use — usually a fraction of a cent per rewrite. Everything else in Inkwell stays free and offline.</p>
+        <ol class="sync-steps">
+          <li>Sign in at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>, add a little credit under <b>Billing</b>, and create an API key.</li>
+          <li>Paste it below and press <b>Save & test</b>.</li>
+        </ol>
+        <label class="field"><span>Anthropic API key</span>
+          <div class="key-row"><input class="input" id="aiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" value="${esc(cur.apiKey)}">
+          <button class="btn sm ghost" data-ai-show type="button">Show</button></div></label>
+        <label class="field"><span>Model</span>
+          <select class="select" id="aiModel">${AI.MODELS.map((x) => `<option value="${x.id}" ${x.id === cur.model ? 'selected' : ''}>${esc(x.name)} — ${esc(x.note)}</option>`).join('')}</select></label>
+        <div class="form-error" id="aiErr"></div>
+        <p class="muted" style="font-size:12px;margin:4px 0 0">🔒 Your key is stored only on this device — never synced, exported or included in backups. When you press Rewrite, the selected passage, its paragraph and the post title are sent straight to Anthropic. Nothing is sent otherwise.</p>
+      </div>
+      <div class="modal-foot">${cur.apiKey ? '<button class="btn danger left" data-ai-forget>Remove key</button>' : ''}<button class="btn ghost" data-close>Cancel</button><button class="btn primary" data-ai-save>Save & test</button></div>`, { cls: 'wide' });
+    const el = m.el;
+    $('[data-ai-show]', el).addEventListener('click', (e) => { const k = $('#aiKey', el); k.type = k.type === 'password' ? 'text' : 'password'; e.target.textContent = k.type === 'password' ? 'Show' : 'Hide'; });
+    const forget = $('[data-ai-forget]', el);
+    if (forget) forget.addEventListener('click', () => { AI.forget(); m.close(); toast('API key removed from this device'); });
+    $('[data-ai-save]', el).addEventListener('click', async (e) => {
+      const key = $('#aiKey', el).value.trim();
+      const err = $('#aiErr', el);
+      err.textContent = '';
+      if (!/^sk-ant-/.test(key)) { err.textContent = 'That doesn’t look like an Anthropic API key — they start with “sk-ant-”.'; return; }
+      AI.save({ apiKey: key, model: $('#aiModel', el).value });
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      btn.textContent = 'Testing…';
+      try {
+        const model = await AI.test();
+        m.close();
+        toast(`AI rewrite is ready — using ${AI.modelName(model)}`);
+      } catch (ex) {
+        err.textContent = ex.code === 'no-change' ? '' : ex.message;
+        if (ex.code === 'no-change') { m.close(); toast('AI rewrite is ready'); }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save & test';
+      }
+    });
   }
 
   // ======================================================================
