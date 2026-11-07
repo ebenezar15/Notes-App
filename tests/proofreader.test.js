@@ -91,3 +91,11 @@ test('fixes floating punctuation and "then" in longer comparisons', () => {
   assert.equal(fix('We ate more food then left.'), 'We ate more food then left.');
   assert.equal(fix('Install it with npm .Then run it.'), 'Install it with npm. Then run it.');
 });
+
+test('Tamil and other scripts: words counted, English rules skipped', () => {
+  assert.equal(P.countWords('தமிழ் ஒரு அழகான மொழி'), 4);
+  assert.equal(P.countWords('Hello வணக்கம் world'), 3);
+  assert.deepEqual(P.check('தமிழ் ஒரு அழகான மொழி i think'), []);
+  assert.equal(P.stats('தமிழ் ஒரு அழகான மொழி.').readability, '—');
+  assert.equal(P.stats('The cat sat on the mat.').english, true);
+});

@@ -1,5 +1,5 @@
 /* Inkwell desktop app (macOS + Windows + Linux) — a thin Electron shell around the web app. */
-const { app, BrowserWindow, Menu, shell, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, shell, nativeTheme, ipcMain } = require('electron');
 const path = require('path');
 
 const isMac = process.platform === 'darwin';
@@ -26,7 +26,7 @@ function createWindow() {
     trafficLightPosition: { x: 16, y: 16 },
     autoHideMenuBar: !isMac,
     icon: path.join(__dirname, '..', 'icons', 'icon-512.png'),
-    webPreferences: { contextIsolation: true, sandbox: true, spellcheck: true },
+    webPreferences: { contextIsolation: true, sandbox: true, spellcheck: true, preload: path.join(__dirname, 'preload.js') },
   });
 
   win.loadFile(path.join(__dirname, '..', 'index.html'));
@@ -92,6 +92,51 @@ function buildMenu() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
+
+// ---- Local AI (Ollama) bridge: localhost only -------------------------------------------
+function checkLocalUrl(url) {
+  const u = new URL(url);
+  if (!/^https?:$/.test(u.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(u.hostname)) {
+    throw new Error('Only AI servers on this computer (localhost) are allowed.');
+  }
+  return u;
+}
+
+ipcMain.handle('local-fetch', async (_e, { url, method = 'GET', body, timeoutMs = 300000 }) => {
+  checkLocalUrl(url);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Math.min(timeoutMs, 15 * 60 * 1000));
+  try {
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: ctrl.signal });
+    return { status: res.status, text: await res.text() };
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
+ipcMain.handle('local-pull', async (e, { url, model }) => {
+  checkLocalUrl(url);
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }) });
+  if (!res.ok || !res.body) return { error: `Download failed (${res.status})` };
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      const evt = JSON.parse(line);
+      if (evt.error) return { error: evt.error };
+      if (!e.sender.isDestroyed()) e.sender.send('local-pull-progress', evt);
+    }
+  }
+  return { ok: true };
+});
 
 app.whenReady().then(() => {
   buildMenu();

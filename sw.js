@@ -1,8 +1,8 @@
 /* Inkwell service worker — caches the whole app so it opens with no network at all. */
-const CACHE = 'inkwell-v4';
+const CACHE = 'inkwell-v5';
 const ASSETS = [
   './', './index.html', './manifest.webmanifest', './css/styles.css',
-  './js/proofreader.js', './js/db.js', './js/exporter.js', './js/sketch.js', './js/vendor/anthropic-sdk.js', './js/ai.js', './js/tools.js', './js/motion.js', './js/social.js', './js/sync.js', './js/app.js',
+  './js/proofreader.js', './js/db.js', './js/exporter.js', './js/sketch.js', './js/vendor/anthropic-sdk.js', './js/ai.js', './js/tamil.js', './js/tools.js', './js/motion.js', './js/social.js', './js/sync.js', './js/app.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png',
 ];
 

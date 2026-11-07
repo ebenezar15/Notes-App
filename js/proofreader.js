@@ -478,6 +478,8 @@
       heading: !!opts.heading, listItem: !!opts.listItem, code: !!opts.code, strictLists: !!opts.strictLists,
     };
     if (ctx.code || !text || !text.trim()) return [];
+    // These rules are for English. Paragraphs mostly in another script (e.g. Tamil) are left alone.
+    if (latinShare(text) < 0.5) return [];
     const enabled = new Set(opts.categories || CATEGORIES);
     const protect = protectedRanges(text);
     const raw = [];
@@ -538,8 +540,15 @@
   }
 
   // ---------------------------------------------------------------- stats
+  /** Share of letters that are Latin script (0–1); 1 for text with no letters. */
+  function latinShare(text) {
+    const letters = (String(text).match(/\p{L}/gu) || []).length;
+    if (!letters) return 1;
+    return (String(text).match(/[A-Za-z\u00C0-\u024F]/g) || []).length / letters;
+  }
+
   function countWords(text) {
-    const m = text.match(/[A-Za-z0-9À-ɏ]+(?:['’-][A-Za-z0-9À-ɏ]+)*/g);
+    const m = text.match(/[\p{L}\p{M}\p{N}]+(?:['’-][\p{L}\p{M}\p{N}]+)*/gu);
     return m ? m.length : 0;
   }
 
@@ -566,7 +575,8 @@
   }
 
   function stats(text) {
-    const words = text.match(/[A-Za-z0-9À-ɏ]+(?:['’-][A-Za-z0-9À-ɏ]+)*/g) || [];
+    const words = text.match(/[\p{L}\p{M}\p{N}]+(?:['’-][\p{L}\p{M}\p{N}]+)*/gu) || [];
+    const english = latinShare(text) >= 0.5;
     const sentences = splitSentences(text).filter((s) => countWords(s.text) > 0);
     const syl = words.reduce((n, w) => n + syllables(w), 0);
     const wc = words.length;
@@ -590,7 +600,8 @@
       avgSentence: sentences.length ? Math.round((wc / sentences.length) * 10) / 10 : 0,
       flesch: Math.max(0, Math.min(100, flesch)),
       grade,
-      readability: wc ? label : '—',
+      readability: wc && english ? label : '—',
+      english,
     };
   }
 
@@ -601,5 +612,5 @@
     return Math.max(0, Math.min(100, Math.round(100 - per100 * 4)));
   }
 
-  return { check, fixAll, applyIssues, stats, score, countWords, splitSentences, CATEGORIES };
+  return { check, fixAll, applyIssues, stats, score, countWords, splitSentences, latinShare, CATEGORIES };
 });

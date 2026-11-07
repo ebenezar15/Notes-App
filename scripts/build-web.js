@@ -9,7 +9,7 @@ const path = require('path');
 const root = path.join(__dirname, '..');
 const out = path.join(root, 'dist');
 const web = path.join(out, 'web');
-const SCRIPTS = ['proofreader', 'db', 'exporter', 'sketch', 'vendor/anthropic-sdk', 'ai', 'tools', 'motion', 'social', 'sync', 'app'];
+const SCRIPTS = ['proofreader', 'db', 'exporter', 'sketch', 'vendor/anthropic-sdk', 'ai', 'tamil', 'tools', 'motion', 'social', 'sync', 'app'];
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(web, { recursive: true });

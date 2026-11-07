@@ -205,7 +205,8 @@
     const theme = s.theme === 'system' ? (mql.matches ? 'dark' : 'light') : s.theme;
     document.documentElement.dataset.theme = theme;
     const root = document.documentElement.style;
-    root.setProperty('--font-editor', s.font === 'sans' ? 'var(--font-sans)' : s.font === 'mono' ? 'var(--font-mono)' : 'var(--font-serif)');
+    root.setProperty('--font-editor', fontById(s.font).stack);
+    root.setProperty('--font-ui', fontById(s.uiFont || 'sans').stack);
     root.setProperty('--editor-size', s.fontSize + 'px');
     root.setProperty('--editor-width', { narrow: '600px', normal: '700px', wide: '860px' }[s.width] || '700px');
     const meta = $$('meta[name="theme-color"]');
@@ -686,6 +687,7 @@
           ${STATUSES.map((s) => `<option value="${s.id}" ${s.id === post.status ? 'selected' : ''}>${s.emoji} ${s.label}</option>`).join('')}
         </select>
         <span class="save-state" id="saveState">Saved</span>
+        <button class="tamil-chip" id="tamilChip" data-action="tamil-sheet" title="Tamil typing guide" ${state.settings.tamilTyping ? '' : 'hidden'}>தமிழ்</button>
         <span class="spacer"></span>
         <span class="wc-chip" id="wcChip">${fmtNum(post.wordCount || 0)} words</span>
         <div class="editor-tools">
@@ -733,6 +735,8 @@
             <span class="sep"></span>
             <button class="icon-btn" data-cmd="image" title="Insert image"><svg><use href="#i-image"/></svg></button>
             <button class="icon-btn" data-cmd="sketch" title="Insert sketch"><svg><use href="#i-pen"/></svg></button>
+            <span class="sep"></span>
+            <button class="icon-btn tamil-btn ${state.settings.tamilTyping ? 'active' : ''}" data-cmd="tamil" title="தமிழ் typing — type Tamil with English letters">அ</button>
             <span class="spacer"></span>
             <button class="icon-btn" data-cmd="fix-all" title="Fix all corrections"><svg><use href="#i-sparkle"/></svg></button>
           </div>
@@ -746,6 +750,7 @@
 
     const body = $('#body');
     body.innerHTML = Exporter.sanitizeHTML(post.content || '') || '<p><br></p>';
+    body.lang = post.lang === 'ta' || Tamil.isTamil(post.title + ' ' + body.textContent) ? 'ta' : 'en';
     editor = { post, body, title: $('#titleInput'), subtitle: $('#subtitleInput') };
     try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) { /* older engines */ }
     renderTags();
@@ -855,6 +860,9 @@
       syncPublish();
     });
     subtitle.addEventListener('input', () => { autoGrow(subtitle); markDirty(); syncPublish(); });
+    title.addEventListener('keydown', tamilFieldKeydown);
+    subtitle.addEventListener('keydown', tamilFieldKeydown);
+    body.addEventListener('mousedown', () => { tamilTyping.buffer = ''; tamilTyping.shown = ''; });
     title.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); subtitle.focus(); } });
     subtitle.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || (e.key === 'ArrowDown' && subtitle.selectionStart === subtitle.value.length)) { e.preventDefault(); placeCaretStart(body); }
@@ -953,6 +961,7 @@
     if (cmd === 'fix-all') { fixAllCorrections(); return; }
     if (cmd === 'image') { pickImage(); return; }
     if (cmd === 'sketch') { openSketch(); return; }
+    if (cmd === 'tamil') { setTamilTyping(!tamilOn()); body.focus(); restoreSelection(); return; }
     body.focus();
     restoreSelection();
     const blk = currentBlock();
@@ -1021,6 +1030,7 @@
       if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); chooseSlash(); return; }
       if (e.key === 'Escape') { e.preventDefault(); closeSlash(); return; }
     }
+    if (tamilKeydown(e)) return;
     if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); e.stopPropagation(); promptLink(); return; }
     if (e.key === 'Tab') {
       if (selectNextPlaceholder(e.shiftKey)) { e.preventDefault(); return; }
@@ -1641,7 +1651,7 @@
           <path d="M20 100 A80 80 0 0 1 180 100" fill="none" stroke="url(#gg)" stroke-width="14" stroke-linecap="round"/>
           ${s.words ? `<line x1="100" y1="100" x2="${nx.toFixed(1)}" y2="${ny.toFixed(1)}" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/><circle cx="100" cy="100" r="6" fill="var(--text)"/>` : ''}
         </svg>
-        <div class="g-label"><b>${s.words ? `${s.flesch} · ${s.readability}` : '—'}</b><span>${s.words ? `Reading grade ${s.grade} · Flesch reading ease` : 'Write a few sentences to see this'}</span></div>
+        <div class="g-label"><b>${s.words && s.english ? `${s.flesch} · ${s.readability}` : '—'}</b><span>${!s.words ? 'Write a few sentences to see this' : s.english ? `Reading grade ${s.grade} · Flesch reading ease` : 'Readability scores are measured for English text'}</span></div>
       </div></div>
       <div class="panel-section"><h4>Sentence rhythm <small>${lens.length} sentences</small></h4><div class="rhythm">
         <svg viewBox="0 0 300 90" preserveAspectRatio="none">${bars || '<text x="150" y="50" text-anchor="middle" fill="var(--text-3)" font-size="12">No sentences yet</text>'}</svg>
@@ -1935,7 +1945,9 @@
       <div class="modal-body">
         <div class="settings-group">Appearance</div>
         <div class="settings-row"><div><b>Theme</b></div>${seg('theme', [['system', 'Auto'], ['light', 'Light'], ['sepia', 'Sepia'], ['dark', 'Dark']])}</div>
-        <div class="settings-row"><div><b>Editor font</b></div>${seg('font', [['serif', 'Serif'], ['sans', 'Sans'], ['mono', 'Mono']])}</div>
+        <div class="settings-row"><div><b>Writing font</b><small>Avenir Next, Palatino, Baskerville, New York and more</small></div><button class="btn sm" data-font-open="editor" style="font-family:${esc(fontById(s.font).stack)}">${esc(fontById(s.font).name)}</button></div>
+        <div class="settings-row"><div><b>App font</b><small>Menus, lists and buttons</small></div><button class="btn sm" data-font-open="ui" style="font-family:${esc(fontById(s.uiFont || 'sans').stack)}">${esc(fontById(s.uiFont || 'sans').name)}</button></div>
+        <div class="settings-row"><div><b>தமிழ் typing</b><small>Type Tamil with English letters — “vaNakkam” → வணக்கம்</small></div><label class="switch"><input type="checkbox" id="setTamil" ${s.tamilTyping ? 'checked' : ''}><i></i></label></div>
         <div class="settings-row"><div><b>Text size</b><small id="fsLabel">${s.fontSize}px</small></div><input type="range" min="15" max="26" value="${s.fontSize}" id="fsRange" style="width:160px;accent-color:var(--accent)"></div>
         <div class="settings-row"><div><b>Page width</b></div>${seg('width', [['narrow', 'Narrow'], ['normal', 'Normal'], ['wide', 'Wide']])}</div>
         <div class="settings-group">Writing</div>
@@ -1947,7 +1959,7 @@
         <div class="settings-row"><div><b>Live proofreading</b><small>Underline issues while you type</small></div><label class="switch"><input type="checkbox" id="setLive" ${s.liveCheck ? 'checked' : ''}><i></i></label></div>
         <div class="settings-row"><div><b>Smart typography</b><small>Suggest curly quotes and em dashes</small></div><label class="switch"><input type="checkbox" id="setTypo" ${s.categories.typography ? 'checked' : ''}><i></i></label></div>
         <div class="settings-group">AI</div>
-        <div class="settings-row"><div><b>AI rewrite suggestions</b><small>${AI.configured ? `On — ${esc(AI.modelName(AI.settings.model))}, using your Anthropic API key` : 'Optional — get better phrasings from Claude using your own API key'}</small></div>
+        <div class="settings-row"><div><b>AI suggestions & translation</b><small>${AI.configured ? `On — ${esc(AI.activeName)}` : 'Optional — a free offline AI on this computer, or Claude with your own API key'}</small></div>
           <button class="btn sm" data-ai-open><svg><use href="#i-sparkle"/></svg>${AI.configured ? 'Manage' : 'Set up'}</button></div>
         <div class="settings-group">Your data</div>
         <div class="settings-row"><div><b>Sync across devices</b><small>${Sync.enabled ? `Signed in as ${esc(Sync.user.email)}` : Sync.config ? 'Set up — sign in to start syncing' : 'Free, optional — use the same login on Mac, Windows and the web'}</small></div>
@@ -1978,6 +1990,8 @@
     if (persistBtn) persistBtn.addEventListener('click', async () => { const ok = await DB.persist(); toast(ok ? 'Storage is now protected' : 'Your browser declined — install the app to improve this'); m.close(); });
     $('[data-sync-open]', el).addEventListener('click', () => { m.close(); syncDialog(); });
     $('[data-ai-open]', el).addEventListener('click', () => { m.close(); aiSettingsDialog(); });
+    $$('[data-font-open]', el).forEach((b) => b.addEventListener('click', () => { m.close(); fontDialog(b.dataset.fontOpen); }));
+    $('#setTamil', el).addEventListener('change', (e) => setTamilTyping(e.target.checked));
     $('[data-backup]', el).addEventListener('click', exportBackup);
     $('[data-restore]', el).addEventListener('click', () => { m.close(); importBackup(); });
     $('[data-export-all]', el).addEventListener('click', exportAllZip);
@@ -2022,6 +2036,7 @@
       ...(others.length ? [{ label: 'Move to' }, ...others.map((p) => ({ text: `${p.emoji} ${p.name}`, run: () => movePost(post, p.id) }))] : []),
       '-',
       { text: 'Social studio (carousel)…', icon: 'i-insta', run: openSocial },
+      { text: 'Translate post (தமிழ் / English)…', icon: 'i-sparkle', run: translatePostDialog },
       { text: 'Export Markdown', icon: 'i-download', run: () => exportPost('md') },
       { text: 'Export HTML', icon: 'i-download', run: () => exportPost('html') },
       { text: 'Print / Save as PDF', icon: 'i-docs', run: () => window.print() },
@@ -2278,6 +2293,7 @@
       case 'focus-menu': focusMenu(a); break;
       case 'palette': openPalette(); break;
       case 'whats-new': whatsNew(); break;
+      case 'tamil-sheet': tamilCheatSheet(a); break;
       case 'new-project': projectDialog(); break;
       case 'quick-post': createPost(null); break;
       case 'new-post': createPost(state.view === 'project' ? state.projectId : null); break;
@@ -3104,6 +3120,7 @@
         { label: 'Headline studio & publishing', icon: 'i-send', keywords: 'substack title score inbox', run: panel('publish') },
         { label: 'Research notes', icon: 'i-note', keywords: 'notes links', run: panel('notes') },
         { label: 'Version history', icon: 'i-history', keywords: 'snapshot restore', run: panel('history') },
+        { label: 'Translate post to தமிழ் / English…', icon: 'i-sparkle', keywords: 'tamil translation language', run: translatePostDialog },
         { label: 'Rewrite with AI', icon: 'i-sparkle', hint: `${MOD}⇧E`, keywords: 'claude improve rephrase shorter clearer sentence', run: () => openAIRewrite() },
         { label: 'Read aloud', icon: 'i-speaker', keywords: 'speech listen voice', run: startReadAloud },
         { label: 'Social studio — Instagram carousel', icon: 'i-insta', keywords: 'linkedin thread caption share', run: openSocial },
@@ -3120,7 +3137,9 @@
       { label: 'Hide / show sidebar', icon: 'i-sidebar', hint: `${MOD}\\`, run: () => toggleSidebarCollapsed() },
       { label: 'Settings', icon: 'i-settings', keywords: 'preferences motion backup', run: settingsDialog },
       { label: 'Sync & account', icon: 'i-cloud', keywords: 'login supabase devices', run: syncDialog },
-      { label: 'AI rewrite settings', icon: 'i-sparkle', keywords: 'claude api key anthropic model', run: aiSettingsDialog },
+      { label: 'AI settings (free offline or Claude)', icon: 'i-sparkle', keywords: 'claude api key anthropic model ollama local offline free', run: () => aiSettingsDialog() },
+      { label: 'Fonts…', icon: 'i-settings', keywords: 'avenir next helvetica palatino baskerville typeface', run: () => fontDialog('editor') },
+      { label: `${state.settings.tamilTyping ? 'Turn off' : 'Turn on'} தமிழ் typing`, icon: 'i-pen', keywords: 'tamil tanglish language keyboard', run: () => setTamilTyping(!tamilOn()) },
       { label: 'What’s new in Inkwell', icon: 'i-gift', keywords: 'features tour help', run: whatsNew },
     ];
   }
@@ -3331,21 +3350,20 @@
 
   function renderAIPop(body) {
     const pop = aiPopEl();
-    const { model } = AI.settings;
     if (!AI.configured) {
       pop.innerHTML = `
         <div class="ai-head"><span class="ai-badge"><svg><use href="#i-sparkle"/></svg>AI rewrite</span><span class="spacer"></span><button class="icon-btn sm" data-ai="close" title="Close"><svg><use href="#i-x"/></svg></button></div>
         <div class="ai-setup">
           <div class="ai-setup-art">✨</div>
-          <b>Get rewrite suggestions from Claude</b>
-          <p>Add your own Anthropic API key once. You pay Anthropic directly per use — a typical rewrite costs a fraction of a cent. Only the passage you choose is sent, and only when you ask.</p>
-          <button class="btn primary" data-ai="settings"><svg><use href="#i-settings"/></svg>Set up AI rewrite</button>
+          <b>Get rewrite & translation suggestions</b>
+          <p>Choose a <b>free offline AI</b> that runs on this computer (private, no internet needed), or <b>Claude</b> for the best quality with your own API key.</p>
+          <div class="ai-setup-btns"><button class="btn primary" data-ai="settings-local">🆓 Free offline AI</button><button class="btn" data-ai="settings-claude">✨ Claude</button></div>
         </div>`;
       positionAIPop(pop);
       return;
     }
     pop.innerHTML = `
-      <div class="ai-head"><span class="ai-badge"><svg><use href="#i-sparkle"/></svg>AI rewrite</span><span class="ai-model" title="Change in Settings → AI rewrite">${esc(AI.modelName(model))}</span><span class="spacer"></span>
+      <div class="ai-head"><span class="ai-badge"><svg><use href="#i-sparkle"/></svg>AI rewrite</span><span class="ai-model" title="Change in Settings → AI">${esc(AI.activeName)}</span><span class="spacer"></span>
         <button class="icon-btn sm" data-ai="close" title="Close (Esc)"><svg><use href="#i-x"/></svg></button></div>
       <div class="ai-modes">${Object.entries(AI.MODES).map(([k, v]) => `<button class="ai-mode ${k === ai.mode ? 'active' : ''}" data-ai-mode="${k}">${esc(v.label)}</button>`).join('')}</div>
       <div class="ai-results" id="aiResults">${body || ''}</div>
@@ -3427,6 +3445,8 @@
     if (act.dataset.ai === 'close') closeAIRewrite();
     else if (act.dataset.ai === 'again') requestRewrite();
     else if (act.dataset.ai === 'settings') { closeAIRewrite(); aiSettingsDialog(); }
+    else if (act.dataset.ai === 'settings-local') { closeAIRewrite(); aiSettingsDialog('local'); }
+    else if (act.dataset.ai === 'settings-claude') { closeAIRewrite(); aiSettingsDialog('claude'); }
   }
 
   function closeAIRewrite() {
@@ -3450,50 +3470,420 @@
     openAIRewrite({ range: r, mode, focus });
   }
 
-  function aiSettingsDialog() {
+  function aiSettingsDialog(tab) {
     const cur = AI.settings;
+    let provider = tab || cur.provider;
     const m = modal(`
-      <div class="modal-head"><h2>AI rewrite</h2><button class="icon-btn" data-close><svg><use href="#i-x"/></svg></button></div>
+      <div class="modal-head"><h2>AI suggestions & translation</h2><button class="icon-btn" data-close><svg><use href="#i-x"/></svg></button></div>
       <div class="modal-body">
-        <p style="margin-top:0;color:var(--text-2)">Rewrite suggestions come from <b>Claude</b>, Anthropic’s AI, using your own API key. You pay Anthropic directly for what you use — usually a fraction of a cent per rewrite. Everything else in Inkwell stays free and offline.</p>
+        <div class="ai-providers">
+          <button class="ai-prov" data-prov="local"><span>🆓</span><b>Free offline AI</b><small>Runs on this computer. Free, private, works without internet.</small></button>
+          <button class="ai-prov" data-prov="claude"><span>✨</span><b>Claude</b><small>Best quality. Your own Anthropic API key, paid per use.</small></button>
+        </div>
+        <div id="aiProvBody"></div>
+      </div>
+      <div class="modal-foot" id="aiFoot"></div>`, { cls: 'wide' });
+    const el = m.el;
+    let pulling = null;
+
+    const renderLocal = async () => {
+      $('#aiProvBody', el).innerHTML = `
+        <ol class="sync-steps">
+          <li>Install <b>Ollama</b> — a free app that runs AI models on your computer — from <a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a> (Mac with Intel or Apple Silicon, Windows, Linux).</li>
+          <li>Open Ollama once, so it runs in the background.</li>
+          <li>Download a model below. After that, everything works offline.</li>
+        </ol>
+        <div class="local-status" id="localStatus"><span class="ai-dots"><i></i><i></i><i></i></span>Looking for Ollama on this computer…</div>
+        <div class="local-models" id="localModels"></div>
+        <details class="local-adv"><summary>Advanced</summary>
+          <label class="field"><span>Ollama address</span><input class="input" id="localHost" value="${esc(cur.localHost)}" spellcheck="false"></label>
+          <label class="field"><span>Or use any other model you’ve pulled (name)</span><input class="input" id="localCustom" placeholder="e.g. mistral:7b" spellcheck="false"></label>
+          ${AI.isNative ? '' : `<p class="muted" style="font-size:12px">Using Inkwell in a web browser? Ollama only answers pages it trusts. The desktop app works out of the box; for the browser version start Ollama with <code>OLLAMA_ORIGINS=${esc(location.origin === 'null' ? '*' : location.origin)}</code> set (see the Ollama FAQ).</p>`}
+        </details>`;
+      $('#aiFoot', el).innerHTML = '<button class="btn ghost" data-close>Close</button><button class="btn primary" data-use-local>Use free offline AI</button>';
+      $('#localHost', el).addEventListener('change', (e) => { AI.save({ localHost: e.target.value || 'http://localhost:11434' }); renderLocal(); });
+      let installed = [];
+      let running = false;
+      try { installed = await AI.localModels(); running = true; } catch (e) { running = false; }
+      if (!$('#localStatus', el)) return;
+      $('#localStatus', el).className = `local-status ${running ? 'ok' : 'off'}`;
+      $('#localStatus', el).innerHTML = running
+        ? `<svg><use href="#i-check"/></svg>Ollama is running — ${installed.length} model${installed.length === 1 ? '' : 's'} downloaded`
+        : `<svg><use href="#i-x"/></svg>Ollama isn’t running yet. Install or open it, then <button class="btn sm ghost" data-recheck>check again</button>`;
+      const chosen = AI.settings.localModel;
+      const names = new Set(installed.map((x) => x.id));
+      const extra = installed.filter((x) => !AI.LOCAL_MODELS.some((r) => r.id === x.id)).map((x) => ({ id: x.id, name: x.id, size: `${(x.size / 1e9).toFixed(1)} GB`, note: 'Downloaded on this computer' }));
+      $('#localModels', el).innerHTML = AI.LOCAL_MODELS.concat(extra).map((x) => `
+        <label class="local-model ${x.id === chosen ? 'active' : ''}">
+          <input type="radio" name="localModel" value="${esc(x.id)}" ${x.id === chosen ? 'checked' : ''}>
+          <div class="lm-info"><b>${esc(x.name)}</b> <span class="muted">${esc(x.size)}</span>${names.has(x.id) ? '<span class="lm-badge">Downloaded</span>' : ''}<small>${esc(x.note)}</small>
+            <div class="lm-progress" hidden><i></i><span></span></div></div>
+          ${names.has(x.id) ? '' : `<button class="btn sm" data-pull="${esc(x.id)}" ${running ? '' : 'disabled'}><svg><use href="#i-download"/></svg>Download</button>`}
+        </label>`).join('');
+      $$('#localModels input', el).forEach((r) => r.addEventListener('change', () => {
+        AI.save({ localModel: r.value });
+        $$('.local-model', el).forEach((x) => x.classList.toggle('active', x.contains(r)));
+      }));
+    };
+
+    const renderClaude = () => {
+      const c = AI.settings;
+      $('#aiProvBody', el).innerHTML = `
         <ol class="sync-steps">
           <li>Sign in at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>, add a little credit under <b>Billing</b>, and create an API key.</li>
-          <li>Paste it below and press <b>Save & test</b>.</li>
+          <li>Paste it below and press <b>Save & test</b>. A typical rewrite costs a fraction of a cent.</li>
         </ol>
         <label class="field"><span>Anthropic API key</span>
-          <div class="key-row"><input class="input" id="aiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" value="${esc(cur.apiKey)}">
+          <div class="key-row"><input class="input" id="aiKey" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…" value="${esc(c.apiKey)}">
           <button class="btn sm ghost" data-ai-show type="button">Show</button></div></label>
         <label class="field"><span>Model</span>
-          <select class="select" id="aiModel">${AI.MODELS.map((x) => `<option value="${x.id}" ${x.id === cur.model ? 'selected' : ''}>${esc(x.name)} — ${esc(x.note)}</option>`).join('')}</select></label>
-        <div class="form-error" id="aiErr"></div>
-        <p class="muted" style="font-size:12px;margin:4px 0 0">🔒 Your key is stored only on this device — never synced, exported or included in backups. When you press Rewrite, the selected passage, its paragraph and the post title are sent straight to Anthropic. Nothing is sent otherwise.</p>
-      </div>
-      <div class="modal-foot">${cur.apiKey ? '<button class="btn danger left" data-ai-forget>Remove key</button>' : ''}<button class="btn ghost" data-close>Cancel</button><button class="btn primary" data-ai-save>Save & test</button></div>`, { cls: 'wide' });
-    const el = m.el;
-    $('[data-ai-show]', el).addEventListener('click', (e) => { const k = $('#aiKey', el); k.type = k.type === 'password' ? 'text' : 'password'; e.target.textContent = k.type === 'password' ? 'Show' : 'Hide'; });
-    const forget = $('[data-ai-forget]', el);
-    if (forget) forget.addEventListener('click', () => { AI.forget(); m.close(); toast('API key removed from this device'); });
-    $('[data-ai-save]', el).addEventListener('click', async (e) => {
-      const key = $('#aiKey', el).value.trim();
-      const err = $('#aiErr', el);
-      err.textContent = '';
-      if (!/^sk-ant-/.test(key)) { err.textContent = 'That doesn’t look like an Anthropic API key — they start with “sk-ant-”.'; return; }
-      AI.save({ apiKey: key, model: $('#aiModel', el).value });
-      const btn = e.currentTarget;
-      btn.disabled = true;
-      btn.textContent = 'Testing…';
-      try {
-        const model = await AI.test();
-        m.close();
-        toast(`AI rewrite is ready — using ${AI.modelName(model)}`);
-      } catch (ex) {
-        err.textContent = ex.code === 'no-change' ? '' : ex.message;
-        if (ex.code === 'no-change') { m.close(); toast('AI rewrite is ready'); }
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Save & test';
+          <select class="select" id="aiModel">${AI.MODELS.map((x) => `<option value="${x.id}" ${x.id === c.model ? 'selected' : ''}>${esc(x.name)} — ${esc(x.note)}</option>`).join('')}</select></label>
+        <p class="muted" style="font-size:12px;margin:4px 0 0">🔒 Your key is stored only on this device — never synced, exported or included in backups. When you ask for a rewrite or translation, that text (plus its paragraph and the post title) is sent straight to Anthropic. Nothing is sent otherwise.</p>`;
+      $('#aiFoot', el).innerHTML = `${c.apiKey ? '<button class="btn danger left" data-ai-forget>Remove key</button>' : ''}<button class="btn ghost" data-close>Close</button><button class="btn primary" data-ai-save>Save & test</button>`;
+      $('[data-ai-show]', el).addEventListener('click', (e) => { const k = $('#aiKey', el); k.type = k.type === 'password' ? 'text' : 'password'; e.target.textContent = k.type === 'password' ? 'Show' : 'Hide'; });
+    };
+
+    const err = (msg) => {
+      let e = $('#aiErr', el);
+      if (!e) { e = document.createElement('div'); e.id = 'aiErr'; e.className = 'form-error'; $('#aiProvBody', el).appendChild(e); }
+      e.textContent = msg || '';
+    };
+
+    const show = (p) => {
+      provider = p;
+      $$('.ai-prov', el).forEach((b) => b.classList.toggle('active', b.dataset.prov === p));
+      if (p === 'local') renderLocal(); else renderClaude();
+    };
+
+    el.addEventListener('click', async (e) => {
+      const prov = e.target.closest('[data-prov]');
+      if (prov) { show(prov.dataset.prov); return; }
+      if (e.target.closest('[data-recheck]')) { e.preventDefault(); renderLocal(); return; }
+      const pull = e.target.closest('[data-pull]');
+      if (pull) {
+        e.preventDefault();
+        if (pulling) return;
+        const model = pull.dataset.pull;
+        const row = pull.closest('.local-model');
+        const bar = $('.lm-progress', row);
+        bar.hidden = false;
+        pull.disabled = true;
+        pulling = model;
+        try {
+          await AI.pullLocal(model, ({ status, pct }) => {
+            if (pct != null) $('i', bar).style.width = `${Math.round(pct * 100)}%`;
+            $('span', bar).textContent = pct != null ? `${Math.round(pct * 100)}%` : status;
+          });
+          AI.save({ localModel: model });
+          toast(`${AI.modelName(model)} downloaded`);
+          renderLocal();
+        } catch (ex) {
+          err(ex.message);
+          pull.disabled = false;
+        } finally { pulling = null; }
+        return;
+      }
+      if (e.target.closest('[data-use-local]')) {
+        const custom = $('#localCustom', el) && $('#localCustom', el).value.trim();
+        if (custom) AI.save({ localModel: custom });
+        AI.save({ provider: 'local' });
+        const btn = e.target.closest('[data-use-local]');
+        btn.disabled = true; btn.textContent = 'Testing…'; err('');
+        try {
+          await AI.test();
+          AI.save({ localReady: true });
+          m.close();
+          toast(`Free offline AI is ready — ${AI.activeName}`);
+        } catch (ex) {
+          AI.save({ localReady: false });
+          err(ex.message);
+        } finally { btn.disabled = false; btn.textContent = 'Use free offline AI'; }
+        return;
+      }
+      if (e.target.closest('[data-ai-forget]')) { AI.forget(); toast('API key removed from this device'); show('claude'); return; }
+      if (e.target.closest('[data-ai-save]')) {
+        const key = $('#aiKey', el).value.trim();
+        err('');
+        if (!/^sk-ant-/.test(key)) { err('That doesn’t look like an Anthropic API key — they start with “sk-ant-”.'); return; }
+        AI.save({ apiKey: key, model: $('#aiModel', el).value, provider: 'claude' });
+        const btn = e.target.closest('[data-ai-save]');
+        btn.disabled = true; btn.textContent = 'Testing…';
+        try {
+          await AI.test();
+          m.close();
+          toast(`AI is ready — using ${AI.activeName}`);
+        } catch (ex) { err(ex.message); } finally { btn.disabled = false; btn.textContent = 'Save & test'; }
       }
     });
+    show(provider);
+  }
+
+  // ======================================================================
+  // Whole-post translation (Tamil ↔ English)
+  // ======================================================================
+  const chromeTranslatorAvailable = () => typeof self !== 'undefined' && 'Translator' in self;
+
+  async function chromeTranslate(texts, source, target, onProgress) {
+    const t = await self.Translator.create({ sourceLanguage: source, targetLanguage: target });
+    const out = [];
+    for (let i = 0; i < texts.length; i++) {
+      out.push(texts[i].trim() ? await t.translate(texts[i]) : texts[i]);
+      onProgress(i + 1, texts.length);
+    }
+    return out;
+  }
+
+  function translatePostDialog() {
+    flushSave();
+    const post = currentPost();
+    if (!post) return;
+    const isTa = Tamil.isTamil(post.title + ' ' + htmlToText(post.content));
+    let target = isTa ? 'en' : 'ta';
+    const engines = [{ id: 'ai', label: AI.configured ? `${AI.activeName}` : 'AI (set up first)' }];
+    if (chromeTranslatorAvailable()) engines.push({ id: 'chrome', label: 'Chrome’s built-in on-device translator (free)' });
+    const m = modal(`
+      <div class="modal-head"><h2>Translate post</h2><button class="icon-btn" data-close><svg><use href="#i-x"/></svg></button></div>
+      <div class="modal-body">
+        <p style="margin-top:0;color:var(--text-2)">Creates a translated copy of “${esc(post.title || 'Untitled')}” in the same project. Your original stays untouched.</p>
+        <div class="field"><span>Translate into</span><div class="segmented" id="trTarget">
+          <button data-v="ta" class="${target === 'ta' ? 'active' : ''}">தமிழ் Tamil</button><button data-v="en" class="${target === 'en' ? 'active' : ''}">English</button></div></div>
+        <label class="field"><span>Using</span><select class="select" id="trEngine">${engines.map((x) => `<option value="${x.id}">${esc(x.label)}</option>`).join('')}</select></label>
+        <div class="tr-progress" id="trProgress" hidden><div class="meter"><i style="width:0%"></i></div><small id="trStatus"></small></div>
+        <div class="form-error" id="trErr"></div>
+        <p class="muted" style="font-size:12px;margin:0">Headings, lists, quotes and images keep their place; bold/italic inside a paragraph isn’t carried over. Machine translation can miss nuance — read it through before publishing.</p>
+      </div>
+      <div class="modal-foot"><button class="btn ghost" data-close>Cancel</button><button class="btn primary" data-tr-go><svg><use href="#i-sparkle"/></svg>Translate</button></div>`, { onClose: () => ctrl.abort() });
+    const el = m.el;
+    const ctrl = new AbortController();
+    $('#trTarget', el).addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (!b) return; target = b.dataset.v; $$('#trTarget button', el).forEach((x) => x.classList.toggle('active', x === b)); });
+    $('[data-tr-go]', el).addEventListener('click', async (e) => {
+      const engine = $('#trEngine', el).value;
+      if (engine === 'ai' && !AI.configured) { m.close(); aiSettingsDialog(); return; }
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      $('#trProgress', el).hidden = false;
+      $('#trErr', el).textContent = '';
+      // Collect translatable blocks from a copy of the post, keeping structure.
+      const doc = new DOMParser().parseFromString(Exporter.sanitizeHTML(post.content || ''), 'text/html');
+      const blocks = Array.from(doc.body.querySelectorAll('p, h1, h2, h3, li, blockquote, figcaption')).filter((b) => !b.querySelector('p, h1, h2, h3, li, blockquote') && b.textContent.trim());
+      const texts = [post.title || '', post.subtitle || '', ...blocks.map((b) => b.textContent.replace(/\s+/g, ' ').trim())];
+      const progress = (done, total) => {
+        $('.meter i', el).style.width = `${Math.round((done / Math.max(1, total)) * 100)}%`;
+        $('#trStatus', el).textContent = `Translated ${done} of ${total} parts…`;
+      };
+      try {
+        let out;
+        if (engine === 'chrome') out = await chromeTranslate(texts, target === 'ta' ? 'en' : 'ta', target, progress);
+        else out = (await AI.translate({ texts, target, signal: ctrl.signal, onProgress: progress })).translations;
+        blocks.forEach((b, i) => { b.textContent = out[i + 2]; });
+        const copy = newPost(post.projectId, {
+          title: out[0] || (post.title ? `${post.title} (${target === 'ta' ? 'தமிழ்' : 'English'})` : ''),
+          subtitle: out[1] || '', content: doc.body.innerHTML, status: 'draft', tags: [...post.tags, target === 'ta' ? 'தமிழ்' : 'english'], cover: post.cover,
+        });
+        copy.lang = target;
+        copy.wordCount = Proofreader.countWords(htmlToText(copy.content));
+        copy.notes = `Translated from “${post.title || 'Untitled'}” with ${engine === 'chrome' ? 'Chrome’s on-device translator' : AI.activeName}.`;
+        state.posts.push(copy);
+        await DB.put('posts', copy);
+        m.close();
+        state.postId = copy.id;
+        render();
+        toast(target === 'ta' ? 'தமிழ் translation ready ✨' : 'English translation ready ✨');
+      } catch (ex) {
+        if (ex.code === 'aborted') return;
+        $('#trErr', el).textContent = ex.message || String(ex);
+        btn.disabled = false;
+      }
+    });
+  }
+
+  // ======================================================================
+  // Tamil phonetic typing (Tanglish → தமிழ்)
+  // ======================================================================
+  const tamilTyping = { buffer: '', shown: '' };
+  const tamilOn = () => !!state.settings.tamilTyping;
+
+  function setTamilTyping(on) {
+    state.settings.tamilTyping = on;
+    saveSettings();
+    tamilTyping.buffer = '';
+    tamilTyping.shown = '';
+    const b = $('#toolbar [data-cmd="tamil"]');
+    if (b) b.classList.toggle('active', on);
+    const chip = $('#tamilChip');
+    if (chip) chip.hidden = !on;
+    toast(on ? 'தமிழ் typing on — type in English letters, e.g. “vaNakkam” → வணக்கம்' : 'Tamil typing off');
+  }
+
+  /** keydown handler for the editor body while Tamil typing is on. Returns true when it handled the key. */
+  function tamilKeydown(e) {
+    if (!tamilOn() || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return false;
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return false;
+    const isLetter = e.key.length === 1 && /[A-Za-z]/.test(e.key);
+    if (e.key === 'Backspace' && tamilTyping.buffer) {
+      e.preventDefault();
+      tamilTyping.buffer = tamilTyping.buffer.slice(0, -1);
+      return replaceTamilWord();
+    }
+    if (!isLetter) { tamilTyping.buffer = ''; tamilTyping.shown = ''; return false; }
+    e.preventDefault();
+    if (!sel.isCollapsed) { document.execCommand('delete'); tamilTyping.buffer = ''; tamilTyping.shown = ''; }
+    tamilTyping.buffer += e.key;
+    return replaceTamilWord();
+  }
+
+  function replaceTamilWord() {
+    const sel = window.getSelection();
+    const next = Tamil.toTamil(tamilTyping.buffer);
+    const prev = tamilTyping.shown;
+    const node = sel.focusNode;
+    const off = sel.focusOffset;
+    if (prev) {
+      // The previous rendering of this word sits just before the caret in the same text node.
+      if (!node || node.nodeType !== 3 || off < prev.length || node.data.slice(off - prev.length, off) !== prev) {
+        tamilTyping.buffer = tamilTyping.buffer.slice(-1);
+        tamilTyping.shown = '';
+        return replaceTamilWord();
+      }
+      const r = document.createRange();
+      r.setStart(node, off - prev.length);
+      r.setEnd(node, off);
+      sel.removeAllRanges();
+      sel.addRange(r);
+    }
+    if (next) document.execCommand('insertText', false, next);
+    else if (prev) document.execCommand('delete');
+    tamilTyping.shown = next;
+    if (!tamilTyping.buffer) tamilTyping.shown = '';
+    return true;
+  }
+
+  /** The same phonetic typing for the title and subtitle fields. */
+  function tamilFieldKeydown(e) {
+    if (!tamilOn() || e.isComposing || e.metaKey || e.ctrlKey || e.altKey) return;
+    const f = e.target;
+    const isLetter = e.key.length === 1 && /[A-Za-z]/.test(e.key);
+    const st = f._tamil || (f._tamil = { buffer: '', shown: '' });
+    if (e.key === 'Backspace' && st.buffer) st.buffer = st.buffer.slice(0, -1);
+    else if (isLetter) st.buffer += e.key;
+    else { st.buffer = ''; st.shown = ''; return; }
+    e.preventDefault();
+    const end = f.selectionStart;
+    const start = f.value.slice(end - st.shown.length, end) === st.shown ? end - st.shown.length : end;
+    const next = Tamil.toTamil(st.buffer);
+    f.setRangeText(next, start, f.selectionEnd, 'end');
+    st.shown = next;
+    f.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function tamilCheatSheet(anchor) {
+    const pop = document.createElement('div');
+    pop.className = 'menu tamil-sheet';
+    pop.innerHTML = `<div class="ts-head"><b>தமிழ் typing</b><small>Type the sounds in English letters. Capital letters matter.</small></div>` +
+      Tamil.CHEATSHEET.map(([group, rows]) => `<div class="menu-label">${esc(group)}</div><div class="ts-grid">${rows.map(([l, t]) => `<span><kbd>${esc(l)}</kbd><b>${esc(t)}</b></span>`).join('')}</div>`).join('') +
+      `<button data-ts-toggle><svg><use href="#i-check"/></svg>${tamilOn() ? 'Turn Tamil typing off' : 'Turn Tamil typing on'}</button>`;
+    closeMenus();
+    document.body.appendChild(pop);
+    const r = anchor.getBoundingClientRect();
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.left)) + 'px';
+    pop.style.top = Math.min(window.innerHeight - pop.offsetHeight - 8, r.bottom + 6) + 'px';
+    pop.addEventListener('click', (e) => { if (e.target.closest('[data-ts-toggle]')) { closeMenus(); setTamilTyping(!tamilOn()); } });
+    const outside = (e) => { if (!pop.contains(e.target)) closeMenus(); };
+    setTimeout(() => document.addEventListener('mousedown', outside), 0);
+    pop._outside = outside;
+  }
+
+  // ======================================================================
+  // Fonts (Mac system fonts, with Windows and Tamil fallbacks)
+  // ======================================================================
+  const TAMIL_FONTS = '"Tamil Sangam MN", "InaiMathi", "Nirmala UI", "Latha", "Noto Sans Tamil"';
+  const FONT_GROUPS = [
+    ['Serif', [
+      ['serif', 'Charter', 'Charter, "Bitstream Charter", "Iowan Old Style", Georgia', 'serif'],
+      ['newyork', 'New York', 'ui-serif, "New York", Charter, Georgia', 'serif', true],
+      ['iowan', 'Iowan Old Style', '"Iowan Old Style", "Palatino Linotype", Georgia', 'serif', true],
+      ['georgia', 'Georgia', 'Georgia', 'serif'],
+      ['palatino', 'Palatino', 'Palatino, "Palatino Linotype", "Book Antiqua"', 'serif', true],
+      ['baskerville', 'Baskerville', 'Baskerville, "Baskerville Old Face", Georgia', 'serif', true],
+      ['hoefler', 'Hoefler Text', '"Hoefler Text", Garamond, Georgia', 'serif', true],
+      ['didot', 'Didot', 'Didot, "Bodoni MT", Georgia', 'serif', true],
+      ['times', 'Times New Roman', '"Times New Roman", Times', 'serif'],
+    ]],
+    ['Sans serif', [
+      ['sans', 'San Francisco (system)', '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto', 'sans-serif'],
+      ['avenir', 'Avenir Next', '"Avenir Next", Avenir, "Segoe UI", "Century Gothic"', 'sans-serif', true],
+      ['helvetica', 'Helvetica Neue', '"Helvetica Neue", Helvetica, Arial', 'sans-serif', true],
+      ['futura', 'Futura', 'Futura, "Century Gothic", "Trebuchet MS"', 'sans-serif', true],
+      ['optima', 'Optima', 'Optima, Candara, "Segoe UI"', 'sans-serif', true],
+      ['gillsans', 'Gill Sans', '"Gill Sans", "Gill Sans MT", Calibri', 'sans-serif', true],
+      ['verdana', 'Verdana', 'Verdana, Geneva', 'sans-serif'],
+    ]],
+    ['Typewriter & mono', [
+      ['typewriter', 'American Typewriter', '"American Typewriter", "Courier New"', 'serif', true],
+      ['mono', 'SF Mono', 'ui-monospace, "SF Mono", Menlo, Consolas', 'monospace', true],
+      ['menlo', 'Menlo', 'Menlo, Consolas, "Liberation Mono"', 'monospace', true],
+      ['courier', 'Courier New', '"Courier New", Courier', 'monospace'],
+    ]],
+    ['Tamil', [
+      ['tamilsangam', 'Tamil Sangam MN', '"Tamil Sangam MN", "Nirmala UI", "Noto Sans Tamil"', 'sans-serif', true],
+      ['inaimathi', 'InaiMathi', '"InaiMathi", "Tamil MN", "Nirmala UI"', 'sans-serif', true],
+      ['nirmala', 'Nirmala UI', '"Nirmala UI", "Latha", "Noto Sans Tamil"', 'sans-serif'],
+    ]],
+  ];
+  const FONTS = FONT_GROUPS.flatMap(([group, list]) => list.map(([id, name, stack, generic, mac]) => ({ id, name, group, mac: !!mac, stack: `${stack}, ${TAMIL_FONTS}, ${generic}` })));
+  const fontById = (id) => FONTS.find((f) => f.id === id) || FONTS[0];
+
+  /** Is a font actually installed? Compares text widths against the generic fallbacks. */
+  const fontCache = {};
+  function fontInstalled(stack) {
+    const first = stack.split(',')[0].trim();
+    if (/^(ui-|-apple-system)/.test(first)) return true;
+    if (first in fontCache) return fontCache[first];
+    const c = document.createElement('canvas').getContext('2d');
+    const sample = 'mmmmmmmmmwwwwwww iiiiil 0123 வணக்கம்';
+    const base = {};
+    for (const g of ['monospace', 'serif', 'sans-serif']) { c.font = `72px ${g}`; base[g] = c.measureText(sample).width; }
+    let found = false;
+    for (const g of ['monospace', 'serif', 'sans-serif']) { c.font = `72px ${first}, ${g}`; if (c.measureText(sample).width !== base[g]) { found = true; break; } }
+    fontCache[first] = found;
+    return found;
+  }
+
+  function fontDialog(which = 'editor') {
+    const m = modal(`
+      <div class="modal-head"><h2>Fonts</h2><button class="icon-btn" data-close><svg><use href="#i-x"/></svg></button></div>
+      <div class="segmented font-tabs" style="margin:0 20px 6px"><button data-tab="editor">Writing font</button><button data-tab="ui">App font</button></div>
+      <div class="modal-body"><div id="fontGrid"></div>
+        <p class="muted" style="font-size:12px">Fonts marked “Mac” come with macOS. On Windows, Inkwell uses the closest match (Avenir Next → Segoe UI, Palatino → Palatino Linotype…). Every font falls back to a Tamil font for Tamil text.</p></div>`, { cls: 'wide', onClose: () => render() });
+    const el = m.el;
+    let tab = which;
+    const draw = () => {
+      const k = tab === 'editor' ? 'font' : 'uiFont';
+      const cur = state.settings[k] || (tab === 'editor' ? 'serif' : 'sans');
+      $$('.font-tabs button', el).forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+      $('#fontGrid', el).innerHTML = FONT_GROUPS.filter(([g]) => tab === 'editor' || g !== 'Typewriter & mono').map(([group]) => `
+        <div class="settings-group">${esc(group)}</div>
+        <div class="font-grid">${FONTS.filter((f) => f.group === group).map((f) => {
+          const ok = fontInstalled(f.stack);
+          return `<button class="font-card ${f.id === cur ? 'active' : ''}" data-font="${f.id}" style="font-family:${esc(f.stack)}">
+            <span class="fc-aa">Aa</span><span class="fc-name">${esc(f.name)}</span>
+            <span class="fc-sample">The quick brown fox · தமிழ்</span>
+            <span class="fc-tags">${f.mac ? '<i>Mac</i>' : ''}${ok ? '' : '<i class="warn">Not on this computer</i>'}</span></button>`;
+        }).join('')}</div>`).join('');
+    };
+    el.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-tab]');
+      if (t) { tab = t.dataset.tab; draw(); return; }
+      const f = e.target.closest('[data-font]');
+      if (!f) return;
+      state.settings[tab === 'editor' ? 'font' : 'uiFont'] = f.dataset.font;
+      saveSettings();
+      applyTheme();
+      $$('.font-card', el).forEach((x) => x.classList.toggle('active', x === f));
+      toast(`${tab === 'editor' ? 'Writing' : 'App'} font: ${fontById(f.dataset.font).name}`);
+    });
+    draw();
   }
 
   // ======================================================================

@@ -60,12 +60,23 @@ New builds are made automatically by GitHub Actions on every push (`.github/work
 - **Fix all** in one click, or accept and ignore suggestions one at a time. The ✨ **Fix** button in the selection toolbar repairs just the selected sentences.
 - Insights: a writing score, a readability gauge (Flesch reading ease and grade level), a sentence-rhythm chart, most-used words, an outline and a word-count goal
 
-**AI rewrite suggestions (optional, uses Claude)**
+**AI rewrite suggestions & translation (optional)**
 - Select a sentence or paragraph and press **✨ Rewrite** (or `⌘/Ctrl + Shift + E`; with nothing selected it rewrites the sentence your cursor is in). Claude suggests three alternatives, with the changed words highlighted and a one-line explanation for each. **Use** replaces your text, and `⌘/Ctrl + Z` undoes it.
 - Seven modes: Improve, Shorter, Clearer, More vivid, More formal, More casual and Fix grammar. **More options** asks for a fresh set.
 - Proofreading cards for long sentences, passive voice, clichés and wordy phrases have a **Rewrite with AI** button that rewrites the whole sentence with that problem in mind.
-- **Setup:** Settings → AI rewrite. Paste your own [Anthropic API key](https://console.anthropic.com/settings/keys) and pick a model: Claude Opus 5.5 (the default, best quality), Sonnet 5.5 or Haiku 5.5 (cheapest). You pay Anthropic directly for what you use, usually a fraction of a cent per rewrite. Everything else in Inkwell stays free and offline.
-- **Privacy:** the key is stored only on your device. It is never synced, exported or included in backups. Only the passage you choose, its paragraph and the post title are sent to Anthropic, and only when you press Rewrite.
+- **Two ways to power it** (Settings → AI):
+  - **Free offline AI:** install [Ollama](https://ollama.com/download), a free app for Mac (Intel and Apple Silicon), Windows and Linux. Then download a model from inside Inkwell; it shows a progress bar. Gemma 3 4B is recommended: it writes well and understands Tamil. Everything runs on your computer, so it's private and works without internet. The desktop app connects to Ollama out of the box. The browser version needs Ollama to allow the site; see the note in Settings.
+  - **Claude:** paste your own [Anthropic API key](https://console.anthropic.com/settings/keys) and pick Claude Opus 5.5 (the default, best quality), Sonnet 5.5 or Haiku 5.5 (cheapest). You pay Anthropic directly, usually a fraction of a cent per rewrite.
+- **Privacy:** settings and keys are stored only on your device, and are never synced, exported or included in backups. With the offline AI nothing leaves your computer. With Claude, only the passage you choose, its paragraph and the post title are sent, and only when you ask.
+
+**Tamil (தமிழ்)**
+- **Tamil typing:** press the **அ** button and type the sounds in English letters, for example `vaNakkam` → வணக்கம் and `thamizh` → தமிழ். It works in titles and posts, fully offline. Click the **தமிழ்** badge for the full guide (capital letters matter: `N` ண, `L` ள, `R` ற, `zh` ழ).
+- **Translation:** the rewrite card's **→ தமிழ்** and **→ English** modes translate a selection, offering natural, conversational and literal versions. **Translate post…** in the post menu makes a translated copy of a whole post and keeps headings, lists, quotes and images in place. It uses the free offline AI, Claude, or Chrome's built-in on-device translator where that's available.
+- Tamil words are counted correctly, English-only proofreading rules skip Tamil paragraphs, and exports keep Tamil intact: Markdown, HTML (marked `lang="ta"`, with Tamil fonts), ZIP, PDF and social carousels. Tamil titles get readable file names (தமிழ் கவிதை → `thamizh-kavithai.md`).
+
+**Fonts**
+- Separate **writing** and **app** fonts (Settings → Writing font / App font), including **Avenir Next**, Helvetica Neue, Futura, Optima, Gill Sans, New York, Iowan Old Style, Palatino, Baskerville, Hoefler Text, Didot, American Typewriter, Menlo and SF Mono, plus the Tamil fonts Tamil Sangam MN and InaiMathi.
+- The picker previews each font and marks any that aren't installed on the current computer. On Windows, each one falls back to its closest match (Avenir Next → Segoe UI, Palatino → Palatino Linotype). The social studio can use your writing font too (**Mine**).
 
 **Headline studio**
 - Scores your title from 0 to 100. It checks length, word count, power and emotion words, specific numbers, a clear angle and clean style, and previews how the post will look in a subscriber's inbox.
@@ -142,7 +153,9 @@ js/exporter.js        Markdown/HTML/Substack export, clipboard, ZIP writer
 js/sketch.js          Pressure-sensitive sketch pad
 js/social.js          Instagram/LinkedIn carousels, captions, threads (canvas → PNG/PDF)
 js/sync.js            Optional account sync (Supabase Auth + REST, offline-first)
-js/ai.js              Optional AI rewrite suggestions via Claude (user's own API key)
+js/ai.js              Optional AI rewrites/translation: free local model (Ollama) or Claude
+js/tamil.js           Tamil phonetic typing, script detection, romanisation
+electron/preload.js   Desktop bridge to a local AI server (localhost only)
 js/vendor/            Browser bundle of the official Anthropic SDK (`npm run build:sdk`)
 js/tools.js           Templates, headline scoring, thesaurus, fuzzy search, read aloud, focus sounds
 js/motion.js          View transitions, staggered entrances, count-ups, ripples, launch animation

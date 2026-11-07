@@ -9,8 +9,10 @@
   };
   const MAX_SLIDES = 20; // Instagram allows up to 20 images per carousel.
 
-  const SERIF = 'Charter, "Iowan Old Style", Georgia, "Times New Roman", serif';
-  const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif';
+  const TAMIL = '"Tamil Sangam MN", "InaiMathi", "Nirmala UI", "Latha", "Noto Sans Tamil"';
+  const SERIF = `Charter, "Iowan Old Style", Georgia, "Times New Roman", ${TAMIL}, serif`;
+  const SANS = `-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, ${TAMIL}, sans-serif`;
+  const editorFont = () => (getComputedStyle(document.documentElement).getPropertyValue('--font-editor').trim() || SERIF);
 
   const THEMES = {
     ember: { label: 'Ember', bg: ['#ff6719', '#ff3d77', '#7c3aed'], fg: '#ffffff', sub: 'rgba(255,255,255,.82)', accent: '#ffe3cf', font: SERIF, glow: true },
@@ -183,7 +185,7 @@
     canvas.height = H;
     const ctx = canvas.getContext('2d');
     const t = themeFor(opts);
-    const family = opts.font === 'serif' ? SERIF : opts.font === 'sans' ? SANS : t.font;
+    const family = opts.font === 'serif' ? SERIF : opts.font === 'sans' ? SANS : opts.font === 'editor' ? editorFont() : t.font;
     const pad = 96;
     const top = opts.size === 'story' ? 220 : 150;
     const bottom = opts.size === 'story' ? H - 260 : H - 150;
@@ -470,7 +472,7 @@
           <div class="ss-side">
             <div class="field"><span>Format</span><div class="segmented ss-wrap" data-opt="size">${Object.entries(SIZES).map(([k, s]) => `<button data-v="${k}" class="${opts.size === k ? 'active' : ''}">${s.label}</button>`).join('')}</div></div>
             <div class="field"><span>Design</span><div class="ss-themes">${Object.entries(THEMES).map(([k, t]) => `<button data-theme="${k}" class="${opts.theme === k ? 'active' : ''}" title="${t.label}" style="background:${k === 'project' ? `linear-gradient(135deg,${(opts.projectColors || ['#ff6719', '#ffb36b']).join(',')})` : t.bg.length > 1 ? `linear-gradient(135deg,${t.bg.join(',')})` : t.bg[0]};color:${t.fg}">Aa</button>`).join('')}</div></div>
-            <div class="field"><span>Font</span><div class="segmented" data-opt="font">${[['theme', 'Auto'], ['serif', 'Serif'], ['sans', 'Sans']].map(([v, l]) => `<button data-v="${v}" class="${opts.font === v ? 'active' : ''}">${l}</button>`).join('')}</div></div>
+            <div class="field"><span>Font</span><div class="segmented" data-opt="font">${[['theme', 'Auto'], ['serif', 'Serif'], ['sans', 'Sans'], ['editor', 'Mine']].map(([v, l]) => `<button data-v="${v}" class="${opts.font === v ? 'active' : ''}">${l}</button>`).join('')}</div></div>
             <label class="field"><span>Your handle</span><input class="input" id="ssHandle" placeholder="@yourname" value="${esc(opts.handle)}"></label>
             <label class="ss-check"><input type="checkbox" id="ssNumbers" ${opts.numbers ? 'checked' : ''}> Slide numbers</label>
             <hr class="ss-hr">

@@ -5,7 +5,9 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   function slugify(s) {
-    return (s || 'untitled').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    // Tamil titles are romanised so file names stay readable (தமிழ் கவிதை → thamizh-kavithai).
+    const text = window.Tamil && /[\u0B80-\u0BFF]/.test(s || '') ? window.Tamil.toLatin(s) : s;
+    return (text || 'untitled').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'untitled';
   }
 
@@ -177,10 +179,10 @@
     const body = opts.html || substackBody(post);
     const cover = post.cover && post.cover.type === 'image' ? `<img class="cover" src="${opts.coverSrc || post.cover.value}" alt="">` : '';
     return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="${window.Tamil && window.Tamil.isTamil((post.title || '') + ' ' + body.replace(/<[^>]+>/g, ' ')) ? 'ta' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(post.title || 'Untitled')}</title>
 <style>
-body{font:20px/1.65 Charter,'Iowan Old Style',Georgia,serif;color:#1d1d1f;max-width:680px;margin:48px auto;padding:0 20px}
+body{font:20px/1.65 Charter,'Iowan Old Style',Georgia,'Tamil Sangam MN','InaiMathi','Nirmala UI','Latha','Noto Serif Tamil',serif;color:#1d1d1f;max-width:680px;margin:48px auto;padding:0 20px}
 h1{font-size:2.1em;line-height:1.2;margin:.2em 0}h2{font-size:1.5em}h3{font-size:1.2em}
 .subtitle{color:#6e6e73;font-size:1.15em;margin-top:0}img{max-width:100%;border-radius:6px}.cover{margin-bottom:24px}
 blockquote{border-left:3px solid #ff6719;margin:1em 0;padding-left:1em;color:#444}pre{background:#f5f5f7;padding:12px;overflow:auto;border-radius:6px}
